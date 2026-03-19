@@ -51,6 +51,14 @@ mo status                    # Live system health dashboard
 mo purge                     # Clean project build artifacts
 mo installer                 # Find and remove installer files
 
+mo size                      # Show developer cache sizes
+mo doctor                    # Check developer environment health
+mo log                       # View operations log
+mo report                    # Generate machine health snapshot (JSON)
+mo watch                     # Monitor thresholds and alert
+mo schedule                  # Manage scheduled maintenance
+mo hook                      # Setup shell cd-hook integration
+
 mo touchid                   # Configure Touch ID for sudo
 mo completion                # Set up shell tab completion
 mo update                    # Update Mole
@@ -73,6 +81,10 @@ mo optimize --whitelist      # Manage protected optimization rules
 mo clean --whitelist         # Manage protected caches
 mo purge --paths             # Configure project scan directories
 mo analyze /Volumes          # Analyze external drives only
+mo size --json               # Dev cache sizes as JSON
+mo doctor --json             # Health checks as JSON
+mo log --since 7d            # Show recent log entries
+mo report --out report.json  # Save health report to file
 ```
 
 ## Security & Safety Design
