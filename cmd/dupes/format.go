@@ -115,11 +115,11 @@ func formatReport(groups []DupeGroup) string {
 
 // jsonReport is the JSON output structure.
 type jsonReport struct {
-	Groups          []jsonGroup `json:"groups"`
-	TotalGroups     int         `json:"total_groups"`
-	TotalDupeFiles  int         `json:"total_duplicate_files"`
-	ReclaimableBytes int64      `json:"reclaimable_bytes"`
-	ReclaimableHuman string     `json:"reclaimable_human"`
+	Groups           []jsonGroup `json:"groups"`
+	TotalGroups      int         `json:"total_groups"`
+	TotalDupeFiles   int         `json:"total_duplicate_files"`
+	ReclaimableBytes int64       `json:"reclaimable_bytes"`
+	ReclaimableHuman string      `json:"reclaimable_human"`
 }
 
 type jsonGroup struct {

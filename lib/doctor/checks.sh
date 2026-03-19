@@ -51,7 +51,7 @@ reset_checks() {
 # Check 1: Xcode Command Line Tools
 check_xcode_clt() {
     local clt_path=""
-    if clt_path=$(xcode-select -p 2>/dev/null) && [[ -n "$clt_path" && -d "$clt_path" ]]; then
+    if clt_path=$(xcode-select -p 2> /dev/null) && [[ -n "$clt_path" && -d "$clt_path" ]]; then
         record_check "Xcode CLT" "pass" "Command Line Tools installed" ""
     else
         record_check "Xcode CLT" "fail" "Command Line Tools not found" \
@@ -106,7 +106,7 @@ check_path_symlinks() {
 
 # Check 3: Git identity
 check_git_identity() {
-    if ! command -v git >/dev/null 2>&1; then
+    if ! command -v git > /dev/null 2>&1; then
         record_check "Git identity" "warn" "git not installed" \
             "Install git via Xcode CLT or Homebrew"
         return
@@ -114,8 +114,8 @@ check_git_identity() {
 
     local git_name=""
     local git_email=""
-    git_name=$(git config --global user.name 2>/dev/null || echo "")
-    git_email=$(git config --global user.email 2>/dev/null || echo "")
+    git_name=$(git config --global user.name 2> /dev/null || echo "")
+    git_email=$(git config --global user.email 2> /dev/null || echo "")
 
     if [[ -n "$git_name" && -n "$git_email" ]]; then
         record_check "Git identity" "pass" "Global identity configured (${git_name})" ""
@@ -135,14 +135,14 @@ check_git_identity() {
 
 # Check 4: Python version
 check_python_version() {
-    if ! command -v python3 >/dev/null 2>&1; then
+    if ! command -v python3 > /dev/null 2>&1; then
         record_check "Python" "warn" "python3 not found" \
             "Install via: brew install python3"
         return
     fi
 
     local py_version=""
-    py_version=$(python3 --version 2>/dev/null | awk '{print $2}' || echo "")
+    py_version=$(python3 --version 2> /dev/null | awk '{print $2}' || echo "")
     if [[ -n "$py_version" ]]; then
         record_check "Python" "pass" "python3 ${py_version}" ""
     else
@@ -152,14 +152,14 @@ check_python_version() {
 
 # Check 5: Node version
 check_node_version() {
-    if ! command -v node >/dev/null 2>&1; then
+    if ! command -v node > /dev/null 2>&1; then
         record_check "Node.js" "warn" "node not found" \
             "Install via: brew install node"
         return
     fi
 
     local node_version=""
-    node_version=$(node --version 2>/dev/null || echo "")
+    node_version=$(node --version 2> /dev/null || echo "")
     if [[ -n "$node_version" ]]; then
         record_check "Node.js" "pass" "node ${node_version}" ""
     else
@@ -169,7 +169,7 @@ check_node_version() {
 
 # Check 6: Homebrew doctor summary
 check_brew_health() {
-    if ! command -v brew >/dev/null 2>&1; then
+    if ! command -v brew > /dev/null 2>&1; then
         record_check "Homebrew" "warn" "brew not installed" \
             "Install from: https://brew.sh"
         return
@@ -197,13 +197,13 @@ check_brew_health() {
 
 # Check 7: Disk SMART status
 check_disk_smart() {
-    if ! command -v diskutil >/dev/null 2>&1; then
+    if ! command -v diskutil > /dev/null 2>&1; then
         record_check "Disk SMART" "warn" "diskutil not available" ""
         return
     fi
 
     local smart_output=""
-    smart_output=$(diskutil info disk0 2>/dev/null | grep "SMART Status" || echo "")
+    smart_output=$(diskutil info disk0 2> /dev/null | grep "SMART Status" || echo "")
 
     if [[ -z "$smart_output" ]]; then
         record_check "Disk SMART" "warn" "SMART status not available" \
@@ -307,7 +307,7 @@ print_json() {
         fi
 
         if [[ -n "$hint" ]]; then
-            cat <<EOF
+            cat << EOF
     {
       "name": "${name}",
       "status": "${check_status}",
@@ -316,7 +316,7 @@ print_json() {
     }${comma}
 EOF
         else
-            cat <<EOF
+            cat << EOF
     {
       "name": "${name}",
       "status": "${check_status}",

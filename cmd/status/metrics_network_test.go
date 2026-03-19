@@ -39,14 +39,14 @@ tcp4       0      0  192.168.1.5.52338      140.82.113.26.443      CLOSE_WAIT`,
 			want:  0,
 		},
 		{
-			name: "only established lines",
+			name:  "only established lines",
 			input: `tcp4       0      0  192.168.1.5.1234       10.0.0.1.443           ESTABLISHED`,
-			want: 1,
+			want:  1,
 		},
 		{
-			name: "established in mixed case should not match",
+			name:  "established in mixed case should not match",
 			input: `tcp4       0      0  192.168.1.5.1234       10.0.0.1.443           established`,
-			want: 0,
+			want:  0,
 		},
 	}
 

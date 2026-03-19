@@ -74,13 +74,13 @@ HOOK_FISH
 _hook_install() {
     local current_shell="${SHELL##*/}"
     if [[ -z "$current_shell" ]]; then
-        current_shell="$(ps -p "$PPID" -o comm= 2>/dev/null | awk '{print $1}')"
+        current_shell="$(ps -p "$PPID" -o comm= 2> /dev/null | awk '{print $1}')"
     fi
 
     local hook_name=""
-    if command -v burrow >/dev/null 2>&1; then
+    if command -v burrow > /dev/null 2>&1; then
         hook_name="burrow"
-    elif command -v bw >/dev/null 2>&1; then
+    elif command -v bw > /dev/null 2>&1; then
         hook_name="mo"
     fi
 
@@ -116,7 +116,7 @@ _hook_install() {
     esac
 
     # Check if already installed
-    if [[ -f "$config_file" ]] && grep -qF "hook" "$config_file" 2>/dev/null && grep -qF "$hook_name" "$config_file" 2>/dev/null; then
+    if [[ -f "$config_file" ]] && grep -qF "hook" "$config_file" 2> /dev/null && grep -qF "$hook_name" "$config_file" 2> /dev/null; then
         echo -e "${GREEN}${ICON_SUCCESS}${NC} Shell hook already installed in $config_file"
         return 0
     fi

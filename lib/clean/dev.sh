@@ -1049,7 +1049,7 @@ clean_xcode_derived_data() {
         [[ -f "$plist" ]] || continue
 
         local workspace_path=""
-        workspace_path=$(defaults read "$plist" WorkspacePath 2>/dev/null) || continue
+        workspace_path=$(defaults read "$plist" WorkspacePath 2> /dev/null) || continue
         [[ -n "$workspace_path" ]] || continue
 
         local source_dir

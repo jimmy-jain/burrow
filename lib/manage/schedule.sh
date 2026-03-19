@@ -23,7 +23,7 @@ generate_plist() {
     local interval="$2"
     local home_dir="$HOME"
 
-    cat <<PLIST_EOF
+    cat << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -78,9 +78,9 @@ format_interval_human() {
 
 detect_burrow_path() {
     local burrow_path=""
-    burrow_path=$(command -v burrow 2>/dev/null || true)
+    burrow_path=$(command -v burrow 2> /dev/null || true)
     if [[ -z "$burrow_path" ]]; then
-        burrow_path=$(command -v bw 2>/dev/null || true)
+        burrow_path=$(command -v bw 2> /dev/null || true)
     fi
     if [[ -z "$burrow_path" ]]; then
         # Fallback: try relative to this script
@@ -155,7 +155,7 @@ schedule_install() {
 
     # Unload existing agent if present
     if [[ -f "$SCHEDULE_PLIST_PATH" ]]; then
-        launchctl bootout "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2>/dev/null || true
+        launchctl bootout "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2> /dev/null || true
     fi
 
     # Write plist
@@ -163,14 +163,14 @@ schedule_install() {
 
     # SAFETY: Verify the written plist contains --dry-run before loading.
     # This guards against code changes that accidentally remove the flag.
-    if ! grep -q "\-\-dry-run" "$SCHEDULE_PLIST_PATH" 2>/dev/null; then
+    if ! grep -q "\-\-dry-run" "$SCHEDULE_PLIST_PATH" 2> /dev/null; then
         log_error "Safety check failed: plist missing --dry-run flag. Refusing to load."
         rm -f "$SCHEDULE_PLIST_PATH"
         return 1
     fi
 
     # Load the agent
-    launchctl bootstrap "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2> /dev/null || true
 
     log_success "LaunchAgent installed, schedule: every $(format_interval_human "$interval")"
     echo -e "  ${GRAY}${ICON_SUBLIST} Runs: bw clean --dry-run (preview only, never auto-deletes)${NC}"
@@ -184,7 +184,7 @@ schedule_remove() {
     fi
 
     # Unload the agent
-    launchctl bootout "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2>/dev/null || true
+    launchctl bootout "gui/$(id -u)" "$SCHEDULE_PLIST_PATH" 2> /dev/null || true
 
     # Remove the plist file
     rm -f "$SCHEDULE_PLIST_PATH"
@@ -203,14 +203,14 @@ schedule_status() {
 
         # Extract interval from plist
         local interval=""
-        interval=$(sed -n '/<key>StartInterval<\/key>/{n;s/.*<integer>\([0-9]*\)<\/integer>.*/\1/p;}' "$SCHEDULE_PLIST_PATH" 2>/dev/null || true)
+        interval=$(sed -n '/<key>StartInterval<\/key>/{n;s/.*<integer>\([0-9]*\)<\/integer>.*/\1/p;}' "$SCHEDULE_PLIST_PATH" 2> /dev/null || true)
         if [[ -n "$interval" ]]; then
             echo -e "    ${GRAY}Interval: $(format_interval_human "$interval")${NC}"
         fi
 
         # Extract command from plist
         local has_dry_run=false
-        if grep -q "\-\-dry-run" "$SCHEDULE_PLIST_PATH" 2>/dev/null; then
+        if grep -q "\-\-dry-run" "$SCHEDULE_PLIST_PATH" 2> /dev/null; then
             has_dry_run=true
         fi
         if [[ "$has_dry_run" == "true" ]]; then
@@ -220,7 +220,7 @@ schedule_status() {
         fi
 
         # Check if loaded
-        if launchctl list 2>/dev/null | command grep -q "$SCHEDULE_LABEL"; then
+        if launchctl list 2> /dev/null | command grep -q "$SCHEDULE_LABEL"; then
             echo -e "    ${GREEN}${ICON_SUCCESS} Loaded and active${NC}"
         else
             echo -e "    ${YELLOW}${ICON_WARNING} Not currently loaded${NC}"
@@ -247,7 +247,7 @@ schedule_status() {
                 local label
                 label=$(basename "$agent" .plist)
                 local is_loaded=""
-                if launchctl list 2>/dev/null | command grep -q "$label"; then
+                if launchctl list 2> /dev/null | command grep -q "$label"; then
                     is_loaded=" (loaded)"
                 fi
                 echo -e "    ${GRAY}${ICON_SUBLIST} ${agent}${is_loaded}${NC}"

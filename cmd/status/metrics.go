@@ -67,7 +67,7 @@ type MetricsSnapshot struct {
 	HealthScore    int          `json:"health_score"`     // 0-100 system health score
 	HealthScoreMsg string       `json:"health_score_msg"` // Brief explanation
 
-	LastBackup     string            `json:"last_backup,omitempty"`
+	LastBackup string `json:"last_backup,omitempty"`
 
 	CPU            CPUStatus         `json:"cpu"`
 	GPU            []GPUStatus       `json:"gpu"`

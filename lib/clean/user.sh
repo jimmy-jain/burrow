@@ -1338,7 +1338,7 @@ clean_icloud_audit() {
         local name
         name="$(basename "$container")"
         local size_kb
-        size_kb=$(du -sk "$container" 2>/dev/null | awk '{print $1}') || size_kb=0
+        size_kb=$(du -sk "$container" 2> /dev/null | awk '{print $1}') || size_kb=0
         if [[ "$size_kb" -gt 0 ]]; then
             local size_human
             if [[ "$size_kb" -ge 1048576 ]]; then
@@ -1351,7 +1351,7 @@ clean_icloud_audit() {
             echo -e "    ${GRAY}${ICON_LIST} ${name}: ${size_human}${NC}"
             found_any=true
         fi
-    done < <(command find "$mobile_docs" -mindepth 1 -maxdepth 1 -print0 2>/dev/null || true)
+    done < <(command find "$mobile_docs" -mindepth 1 -maxdepth 1 -print0 2> /dev/null || true)
 
     if [[ "$found_any" == "false" ]]; then
         echo -e "    ${GREEN}${ICON_SUCCESS}${NC} No iCloud containers found"

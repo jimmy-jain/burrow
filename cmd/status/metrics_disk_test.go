@@ -8,9 +8,9 @@ import (
 
 func TestParseSMARTStatus(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want string
+		want  string
 	}{
 		{
 			name: "verified status",
@@ -44,14 +44,14 @@ func TestParseSMARTStatus(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "empty output",
+			name:  "empty output",
 			input: "",
-			want: "",
+			want:  "",
 		},
 		{
-			name: "smart status with extra whitespace",
+			name:  "smart status with extra whitespace",
 			input: `   SMART Status:           Verified  `,
-			want: "Verified",
+			want:  "Verified",
 		},
 	}
 
