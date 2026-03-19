@@ -113,8 +113,8 @@ _sort_by_size_desc() {
 
 _print_table() {
     # Compute column widths
-    local max_name=5   # "Cache"
-    local max_size=4   # "Size"
+    local max_name=5 # "Cache"
+    local max_size=4 # "Size"
     local i
 
     for ((i = 0; i < _SIZE_COUNT; i++)); do

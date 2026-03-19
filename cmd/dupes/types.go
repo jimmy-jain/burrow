@@ -53,7 +53,7 @@ type ScanProgress struct {
 
 // ScanConfig controls scanning behavior.
 type ScanConfig struct {
-	Root       string
-	MinSize    int64
+	Root        string
+	MinSize     int64
 	ConserveDir string // excluded from scan when inside root
 }

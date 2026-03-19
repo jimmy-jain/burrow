@@ -37,17 +37,17 @@ _migrate_mole_config() {
 
     # Copy config
     mkdir -p "$new_config"
-    command cp -a "$old_config/." "$new_config/" 2>/dev/null || true
+    command cp -a "$old_config/." "$new_config/" 2> /dev/null || true
 
     # Copy cache
     if [[ -d "$old_cache" && ! -d "$new_cache" ]]; then
         mkdir -p "$new_cache"
-        command cp -a "$old_cache/." "$new_cache/" 2>/dev/null || true
+        command cp -a "$old_cache/." "$new_cache/" 2> /dev/null || true
     fi
 
     # Unload old LaunchAgent
     if [[ -f "$old_agent" ]]; then
-        launchctl bootout "gui/$(id -u)" "$old_agent" 2>/dev/null || true
+        launchctl bootout "gui/$(id -u)" "$old_agent" 2> /dev/null || true
     fi
 
     echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Configuration migrated from ~/.config/mole to ~/.config/burrow"
@@ -182,9 +182,9 @@ check_for_updates() {
     local check_ts_file="$HOME/.cache/burrow/version_check_time"
     if [[ -f "$check_ts_file" ]]; then
         local last_check
-        last_check=$(cat "$check_ts_file" 2>/dev/null || echo "0")
+        last_check=$(cat "$check_ts_file" 2> /dev/null || echo "0")
         local now
-        now=$(date +%s 2>/dev/null || echo "0")
+        now=$(date +%s 2> /dev/null || echo "0")
         if [[ "$last_check" =~ ^[0-9]+$ && "$now" =~ ^[0-9]+$ && $((now - last_check)) -lt 3600 ]]; then
             return 0
         fi
@@ -193,7 +193,7 @@ check_for_updates() {
     (
         (
             # Record check timestamp
-            date +%s > "${check_ts_file}.tmp" 2>/dev/null && mv -f "${check_ts_file}.tmp" "$check_ts_file" 2>/dev/null || true
+            date +%s > "${check_ts_file}.tmp" 2> /dev/null && mv -f "${check_ts_file}.tmp" "$check_ts_file" 2> /dev/null || true
             local latest
 
             latest=$(get_latest_version_from_github)

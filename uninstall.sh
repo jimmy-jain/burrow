@@ -29,10 +29,23 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run) DRY_RUN=true; shift ;;
-        --force) FORCE=true; shift ;;
-        --help|-h) usage; exit 0 ;;
-        *) echo -e "${RED}Unknown option: $1${NC}"; usage; exit 1 ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --force)
+            FORCE=true
+            shift
+            ;;
+        --help | -h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            usage
+            exit 1
+            ;;
     esac
 done
 
@@ -46,9 +59,9 @@ maybe_sudo_rm() {
         return 0
     fi
     if [[ ! -w "$(dirname "$path")" ]]; then
-        sudo rm -f "$path" 2>/dev/null
+        sudo rm -f "$path" 2> /dev/null
     else
-        rm -f "$path" 2>/dev/null
+        rm -f "$path" 2> /dev/null
     fi
 }
 
@@ -61,7 +74,7 @@ maybe_sudo_rm_rf() {
         echo -e "  ${YELLOW}${ICON_LIST}${NC} Would remove: $path"
         return 0
     fi
-    rm -rf "$path" 2>/dev/null || true
+    rm -rf "$path" 2> /dev/null || true
 }
 
 # Detect installations
@@ -69,7 +82,7 @@ echo "Detecting Burrow installations..."
 
 is_homebrew=false
 brew_cmd=""
-if command -v brew >/dev/null 2>&1; then
+if command -v brew > /dev/null 2>&1; then
     brew_cmd="brew"
 elif [[ -x "/opt/homebrew/bin/brew" ]]; then
     brew_cmd="/opt/homebrew/bin/brew"
@@ -77,7 +90,7 @@ elif [[ -x "/usr/local/bin/brew" ]]; then
     brew_cmd="/usr/local/bin/brew"
 fi
 
-if [[ -n "$brew_cmd" ]] && "$brew_cmd" list burrow >/dev/null 2>&1; then
+if [[ -n "$brew_cmd" ]] && "$brew_cmd" list burrow > /dev/null 2>&1; then
     is_homebrew=true
 fi
 
@@ -94,7 +107,7 @@ for path in "/usr/local/bin/burrow" "$HOME/.local/bin/burrow" "/opt/local/bin/bu
 done
 
 # Also check PATH
-found_burrow=$(command -v burrow 2>/dev/null || true)
+found_burrow=$(command -v burrow 2> /dev/null || true)
 if [[ -n "$found_burrow" && -f "$found_burrow" ]]; then
     if [[ ! -L "$found_burrow" ]] || ! readlink "$found_burrow" | grep -q "Cellar/burrow"; then
         local_exists=false
@@ -113,7 +126,7 @@ for path in "/usr/local/bin/bw" "$HOME/.local/bin/bw" "/opt/local/bin/bw"; do
     fi
 done
 
-found_mo=$(command -v bw 2>/dev/null || true)
+found_mo=$(command -v bw 2> /dev/null || true)
 if [[ -n "$found_mo" && -f "$found_mo" ]]; then
     if [[ ! -L "$found_mo" ]] || ! readlink "$found_mo" | grep -q "Cellar/burrow"; then
         local_exists=false

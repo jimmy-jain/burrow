@@ -41,12 +41,12 @@ func TestMutuallyExclusive(t *testing.T) {
 		restoreDir  string
 		wantErr     bool
 	}{
-		{false, "", "", false},          // report mode
-		{true, "", "", false},           // delete only
-		{false, "/tmp/c", "", false},    // conserve only
-		{false, "", "/tmp/r", false},    // restore only
-		{true, "/tmp/c", "", true},      // delete + conserve
-		{true, "", "/tmp/r", true},      // delete + restore
+		{false, "", "", false},            // report mode
+		{true, "", "", false},             // delete only
+		{false, "/tmp/c", "", false},      // conserve only
+		{false, "", "/tmp/r", false},      // restore only
+		{true, "/tmp/c", "", true},        // delete + conserve
+		{true, "", "/tmp/r", true},        // delete + restore
 		{false, "/tmp/c", "/tmp/r", true}, // conserve + restore
 		{true, "/tmp/c", "/tmp/r", true},  // all three
 	}

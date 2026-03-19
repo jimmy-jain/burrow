@@ -657,9 +657,9 @@ safe_clean() {
             risk_info=$(classify_cleanup_risk "$description" "${existing_paths[0]:-}")
             risk_level="${risk_info%%|*}"
             case "$risk_level" in
-                HIGH)   risk_color="$RED" ;;
+                HIGH) risk_color="$RED" ;;
                 MEDIUM) risk_color="$YELLOW" ;;
-                *)      risk_color="$GREEN" ;;
+                *) risk_color="$GREEN" ;;
             esac
             echo -e "  ${risk_color}[${risk_level}]${NC} ${YELLOW}${ICON_DRY_RUN}${NC} $label${NC}, ${YELLOW}$size_human dry${NC}"
 
@@ -1139,9 +1139,9 @@ ensure_recent_snapshot() {
 
     # Check if running on APFS; skip if not
     local fs_type=""
-    fs_type=$(diskutil info / 2>/dev/null | awk -F: '/Type \(Bundle\)/{gsub(/^[ \t]+/,"",$2); print $2}') || true
+    fs_type=$(diskutil info / 2> /dev/null | awk -F: '/Type \(Bundle\)/{gsub(/^[ \t]+/,"",$2); print $2}') || true
     if [[ -z "$fs_type" ]]; then
-        fs_type=$(diskutil info / 2>/dev/null | awk -F: '/File System Personality/{gsub(/^[ \t]+/,"",$2); print $2}') || true
+        fs_type=$(diskutil info / 2> /dev/null | awk -F: '/File System Personality/{gsub(/^[ \t]+/,"",$2); print $2}') || true
     fi
     if [[ "$fs_type" != *"apfs"* && "$fs_type" != *"APFS"* ]]; then
         debug_log "Not APFS filesystem ($fs_type), skipping snapshot"
@@ -1150,7 +1150,7 @@ ensure_recent_snapshot() {
 
     # Check for a recent snapshot (within the last hour)
     local now
-    now=$(date +%s 2>/dev/null || echo "0")
+    now=$(date +%s 2> /dev/null || echo "0")
     local has_recent=false
     local snapshot_line=""
 
@@ -1164,7 +1164,7 @@ ensure_recent_snapshot() {
             # Convert 2024-01-15-143022 to timestamp
             local formatted_date="${date_part:0:10} ${date_part:11:2}:${date_part:13:2}:${date_part:15:2}"
             local snap_epoch=""
-            snap_epoch=$(date -j -f "%Y-%m-%d %H:%M:%S" "$formatted_date" +%s 2>/dev/null || echo "0")
+            snap_epoch=$(date -j -f "%Y-%m-%d %H:%M:%S" "$formatted_date" +%s 2> /dev/null || echo "0")
             if [[ "$snap_epoch" -gt 0 && "$now" -gt 0 ]]; then
                 local age_seconds=$((now - snap_epoch))
                 if [[ $age_seconds -lt 3600 ]]; then
@@ -1173,7 +1173,7 @@ ensure_recent_snapshot() {
                 fi
             fi
         fi
-    done < <(tmutil listlocalsnapshots / 2>/dev/null || true)
+    done < <(tmutil listlocalsnapshots / 2> /dev/null || true)
 
     if [[ "$has_recent" == "true" ]]; then
         debug_log "Recent APFS snapshot found, skipping creation"
@@ -1182,7 +1182,7 @@ ensure_recent_snapshot() {
 
     # Create a new local snapshot
     debug_log "Creating APFS local snapshot as safety net"
-    tmutil localsnapshot 2>/dev/null || true
+    tmutil localsnapshot 2> /dev/null || true
     return 0
 }
 

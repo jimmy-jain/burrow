@@ -259,9 +259,9 @@ func TestEvaluateRuleDescription(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		rule     Rule
-		wantSub  string // Substring that should appear in description
+		name    string
+		rule    Rule
+		wantSub string // Substring that should appear in description
 	}{
 		{
 			name:    "disk free description includes value",
@@ -295,10 +295,10 @@ func TestEvaluateRuleDescription(t *testing.T) {
 
 func TestFormatNotification(t *testing.T) {
 	tests := []struct {
-		name     string
-		rule     Rule
-		desc     string
-		wantSub  []string
+		name    string
+		rule    Rule
+		desc    string
+		wantSub []string
 	}{
 		{
 			name:    "disk alert message",
