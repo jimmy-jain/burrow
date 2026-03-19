@@ -97,12 +97,12 @@ _sort_by_size_desc() {
             tmp_name="${_SIZE_NAMES[$i]}"
             tmp_bytes="${_SIZE_BYTES[$i]}"
             tmp_path="${_SIZE_PATHS[$i]}"
-            _SIZE_NAMES[$i]="${_SIZE_NAMES[$max_idx]}"
-            _SIZE_BYTES[$i]="${_SIZE_BYTES[$max_idx]}"
-            _SIZE_PATHS[$i]="${_SIZE_PATHS[$max_idx]}"
-            _SIZE_NAMES[$max_idx]="$tmp_name"
-            _SIZE_BYTES[$max_idx]="$tmp_bytes"
-            _SIZE_PATHS[$max_idx]="$tmp_path"
+            _SIZE_NAMES[i]="${_SIZE_NAMES[max_idx]}"
+            _SIZE_BYTES[i]="${_SIZE_BYTES[max_idx]}"
+            _SIZE_PATHS[i]="${_SIZE_PATHS[max_idx]}"
+            _SIZE_NAMES[max_idx]="$tmp_name"
+            _SIZE_BYTES[max_idx]="$tmp_bytes"
+            _SIZE_PATHS[max_idx]="$tmp_path"
         fi
     done
 }
