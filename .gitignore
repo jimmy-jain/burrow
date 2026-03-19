@@ -59,12 +59,17 @@ cmd/analyze/analyze
 cmd/status/status
 /status
 /analyze
+/watch
 mole-analyze
 # Go binaries
 bin/analyze-go
 bin/status-go
+bin/watch-go
+bin/dupes-go
 bin/analyze-darwin-*
 bin/status-darwin-*
+bin/watch-darwin-*
+bin/dupes-darwin-*
 
 # Test artifacts
 tests/tmp-*/

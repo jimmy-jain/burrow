@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/lib/core/commands.sh"
 trap cleanup_temp_files EXIT INT TERM
 
 # Version and update helpers
-VERSION="2.0.4"
+VERSION="2.1.0"
 MOLE_TAGLINE="Deep clean and optimize your Mac."
 
 is_touchid_configured() {
@@ -957,6 +957,9 @@ main() {
             ;;
         "report")
             exec "$SCRIPT_DIR/bin/report.sh" "${args[@]:1}"
+            ;;
+        "dupes")
+            exec "$SCRIPT_DIR/bin/dupes.sh" "${args[@]:1}"
             ;;
         "watch")
             exec "$SCRIPT_DIR/bin/watch.sh" "${args[@]:1}"

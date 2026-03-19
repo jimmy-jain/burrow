@@ -14,6 +14,7 @@ MOLE_COMMANDS=(
     "doctor:Check developer environment health"
     "log:View operations log"
     "report:Generate machine health report"
+    "dupes:Find and manage duplicate files"
     "watch:Monitor thresholds and alert"
     "schedule:Manage scheduled maintenance"
     "hook:Setup shell integration hooks"

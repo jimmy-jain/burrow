@@ -20,6 +20,7 @@
 - **Deep cleaning**: Removes caches, logs, and browser leftovers to **reclaim gigabytes of space**
 - **Smart uninstaller**: Removes apps plus launch agents, preferences, and **hidden remnants**
 - **Disk insights**: Visualizes usage, finds large files, **rebuilds caches**, and refreshes system services
+- **Duplicate finder**: Finds true content-duplicate files with xxhash, **conserves or deletes** with full restore support
 - **Live monitoring**: Shows real-time CPU, GPU, memory, disk, and network stats
 
 ## Quick Start
@@ -49,6 +50,7 @@ mo optimize                  # Refresh caches & services
 mo analyze                   # Visual disk explorer
 mo status                    # Live system health dashboard
 mo purge                     # Clean project build artifacts
+mo dupes                     # Find duplicate files
 mo installer                 # Find and remove installer files
 
 mo size                      # Show developer cache sizes
@@ -81,6 +83,11 @@ mo optimize --whitelist      # Manage protected optimization rules
 mo clean --whitelist         # Manage protected caches
 mo purge --paths             # Configure project scan directories
 mo analyze /Volumes          # Analyze external drives only
+mo dupes ~/Documents         # Find duplicates
+mo dupes --json ~/Documents  # Duplicate report as JSON
+mo dupes --conserve /tmp/c ~/Documents  # Move dupes, keep originals
+mo dupes --restore /tmp/c    # Restore conserved files
+mo dupes --delete ~/Documents  # Interactive delete (Finder Trash)
 mo size --json               # Dev cache sizes as JSON
 mo doctor --json             # Health checks as JSON
 mo log --since 7d            # Show recent log entries
@@ -188,6 +195,33 @@ Analyze Disk  ~/Documents  |  Total: 156.8GB
 
   ↑↓←→ Navigate  |  O Open  |  F Show  |  ⌫ Delete  |  L Large files  |  Q Quit
 ```
+
+### Duplicate File Finder
+
+Find and manage true content-duplicate files using xxhash content hashing. Multi-phase pipeline (size filter, partial hash, full hash) for fast scanning of large directories.
+
+```bash
+$ mo dupes ~/Documents
+
+3 copies (15.2 MB each, 30.4 MB reclaimable):
+  ✓ [1] ~/Documents/report.pdf
+    [2] ~/Documents/archive/report.pdf
+    [3] ~/Documents/backup/report copy.pdf
+
+2 copies (8.5 MB each, 8.5 MB reclaimable):
+  ✓ [1] ~/Documents/photo.jpg
+    [2] ~/Documents/old/photo.jpg
+
+━━━ Summary ━━━
+  2 duplicate groups, 3 redundant files
+  Reclaimable: 38.9 MB
+```
+
+Three modes for handling duplicates:
+
+- **Report** (default): Scan and show duplicate groups with reclaimable space
+- **Delete** (`--delete`): Interactive per-group selection, moves to Finder Trash (recoverable)
+- **Conserve** (`--conserve <dir>`): Safely relocate duplicates preserving path structure, with manifest for full restoration via `--restore`
 
 ### Live System Status
 

@@ -18,7 +18,7 @@ git config core.hooksPath .githooks
 # Tests (BATS for shell, go test for Go)
 ./scripts/test.sh
 
-# Build Go binaries (analyze + status + watch)
+# Build Go binaries (analyze + status + watch + dupes)
 make build              # local architecture
 make release-arm64      # release for arm64
 make release-amd64      # release for amd64
@@ -27,6 +27,7 @@ make release-amd64      # release for amd64
 go run ./cmd/analyze
 go run ./cmd/status
 go run ./cmd/watch
+go run ./cmd/dupes
 ```
 
 ## Architecture
@@ -41,6 +42,7 @@ go run ./cmd/watch
 | Command wrappers | Bash | `bin/*.sh` (thin wrappers that source libs and run features) |
 | Disk analyzer TUI | Go | `cmd/analyze/` (bubbletea + lipgloss) |
 | System monitor TUI | Go | `cmd/status/` (bubbletea + lipgloss, gopsutil for metrics) |
+| Duplicate finder | Go | `cmd/dupes/` (xxhash content hashing, conserve/restore) |
 | Threshold alerts | Go | `cmd/watch/` (background polling, macOS notifications) |
 
 ### Directory Layout
@@ -62,8 +64,9 @@ lib/
 cmd/
   analyze/              # Go disk analyzer (bubbletea MVC)
   status/               # Go system monitor (bubbletea, gopsutil metrics)
+  dupes/                # Go duplicate file finder (xxhash, conserve/restore, Finder trash)
   watch/                # Go threshold alerts (rules, notifications, predictive disk)
-tests/                  # BATS test suites (30 files)
+tests/                  # BATS test suites
 scripts/                # Dev/CI scripts (check.sh, test.sh)
 install.sh              # Standalone installer
 ```
@@ -83,6 +86,7 @@ install.sh              # Standalone installer
 | `mo doctor` | Shell | Developer environment health checks (`--json`) |
 | `mo log` | Shell | Operations log viewer (`--since`, `--grep`, `--tail`) |
 | `mo report` | Shell | Machine health snapshot as JSON (`--out`) |
+| `mo dupes` | Go | Find and manage duplicate files (`--conserve`, `--restore`, `--delete`, `--json`) |
 | `mo watch` | Go | Background threshold alerts with macOS notifications |
 | `mo schedule` | Shell | LaunchAgent maintenance (install/remove/status) |
 | `mo hook` | Shell | Shell cd-hook integration (bash/zsh/fish) |
@@ -103,10 +107,10 @@ Each module guards against double-sourcing: `if [[ -n "${MOLE_COMMON_LOADED:-}" 
 
 ### Go Components
 
-All use Charmbracelet bubbletea MVC pattern (Model/Update/View message loop).
-- `cmd/analyze/`: Concurrent filesystem scanning, heap-based top-N tracking, singleflight dedup, Finder trash integration
-- `cmd/status/`: Real-time metrics every 1s, RingBuffer history, composite health score (0-100), SMART health, Time Machine backup, network connections, per-process RSS, battery health in score
-- `cmd/watch/`: Rule-based threshold monitoring, configurable via `~/.config/mole/watch_rules`, macOS notifications via osascript, 15-minute cooldown per rule, predictive disk space projection
+- `cmd/analyze/`: Charmbracelet bubbletea MVC. Concurrent filesystem scanning, heap-based top-N tracking, singleflight dedup, Finder trash integration
+- `cmd/status/`: Charmbracelet bubbletea MVC. Real-time metrics every 1s, RingBuffer history, composite health score (0-100), SMART health, Time Machine backup, network connections, per-process RSS, battery health in score
+- `cmd/dupes/`: CLI (no TUI). Multi-phase pipeline: walk → size group → inode dedup → partial xxhash (4KB) → full xxhash → sort by reclaimable. Three modes: report (default), delete (Finder Trash), conserve (relocate with manifest + restore). Cross-volume copy+verify for conserve
+- `cmd/watch/`: CLI (no TUI). Rule-based threshold monitoring, configurable via `~/.config/mole/watch_rules`, macOS notifications via osascript, 15-minute cooldown per rule, predictive disk space projection
 
 ## Code Conventions
 
@@ -125,7 +129,7 @@ All use Charmbracelet bubbletea MVC pattern (Model/Update/View message loop).
 - Debug mode: check `MO_DEBUG` variable, format as `[MODULE_NAME] message` to stderr
 - Use `command cp -f` in install scripts to bypass shell aliases (`cp -i`)
 
-### Go (cmd/analyze, cmd/status, cmd/watch)
+### Go (cmd/analyze, cmd/status, cmd/dupes, cmd/watch)
 
 - Files focused on single responsibility, <500 lines each
 - Extract constants to `constants.go` - no magic numbers
@@ -153,7 +157,7 @@ These are critical - Mole performs destructive operations on user systems:
 5. **Whitelist support** - User-protected paths in `~/.config/mole/whitelist` must be respected
 6. **Dry-run first** - Destructive commands should support `--dry-run` preview
 7. **Operation logging** - All deletions logged to `operations.log` (5MB rotation)
-8. **Trash over delete** - `mo analyze` moves to Trash via Finder (recoverable), not permanent deletion
+8. **Trash over delete** - `mo analyze` and `mo dupes --delete` move to Trash via Finder (recoverable), not permanent deletion
 9. **Pre-clean snapshot** - APFS local snapshot created before `mo clean` runs (skip with `MO_SKIP_SNAPSHOT=1`)
 10. **First-run safety** - First `mo clean` forces dry-run with confirmation before real cleanup
 11. **Risk categorization** - Dry-run output shows `[LOW]`/`[MEDIUM]`/`[HIGH]` risk labels
@@ -161,7 +165,7 @@ These are critical - Mole performs destructive operations on user systems:
 ## Testing
 
 - **Shell tests**: BATS framework, 30 test suites in `tests/` - run via `./scripts/test.sh`
-- **Go tests**: Standard `go test` in `cmd/analyze/`, `cmd/status/`, `cmd/watch/`
+- **Go tests**: Standard `go test` in `cmd/analyze/`, `cmd/status/`, `cmd/dupes/`, `cmd/watch/`
 - **CI tests on**: macOS 14 (Sonoma) and macOS 15 (Sequoia)
 - **Security checks in CI**: unsafe `rm -rf` detection, app protection validation, secret scanning, high-risk path regression
 - **TDD workflow**: Write tests first, then implement until tests pass
@@ -182,5 +186,5 @@ These are critical - Mole performs destructive operations on user systems:
 
 ## Key Dependencies
 
-- **Go 1.25.0**, bubbletea v1.3.10, lipgloss v1.1.0, gopsutil v4.26.2
+- **Go 1.25.0**, bubbletea v1.3.10, lipgloss v1.1.0, gopsutil v4.26.2, xxhash/v2 v2.3.0
 - **Dev tools**: shfmt, shellcheck, bats-core, golangci-lint, goimports
