@@ -328,9 +328,7 @@ start_inline_spinner() {
 
         (
             local stop_file="$INLINE_SPINNER_STOP_FILE"
-            local chars
-            chars="$(mo_spinner_chars)"
-            [[ -z "$chars" ]] && chars="|/-\\"
+            local chars="|/-\\"
             local i=0
 
             # Clear line on first output to prevent text remnants from previous messages
