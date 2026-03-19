@@ -219,25 +219,41 @@ clean_project_caches() {
         stop_inline_spinner
     fi
 
+    # Batch __pycache__ dirs to avoid one output line per directory.
+    local -a pycache_dirs=()
+    local -a next_dirs=()
+    local -a dart_dirs=()
+
     while IFS= read -r cache_dir; do
         case "$(basename "$cache_dir")" in
             ".next")
-                [[ -d "$cache_dir/cache" ]] && safe_clean "$cache_dir/cache"/* "Next.js build cache" || true
+                [[ -d "$cache_dir/cache" ]] && next_dirs+=("$cache_dir/cache")
                 ;;
             "__pycache__")
-                # Remove the cache directory itself so we avoid expanding every
-                # .pyc file into a separate safe_clean target.
-                [[ -d "$cache_dir" ]] && safe_clean "$cache_dir" "Python bytecode cache" || true
+                [[ -d "$cache_dir" ]] && pycache_dirs+=("$cache_dir")
                 ;;
             ".dart_tool")
-                if [[ -d "$cache_dir" ]]; then
-                    safe_clean "$cache_dir" "Flutter build cache (.dart_tool)" || true
-                    local build_dir="$(dirname "$cache_dir")/build"
-                    if [[ -d "$build_dir" ]]; then
-                        safe_clean "$build_dir" "Flutter build cache (build/)" || true
-                    fi
-                fi
+                [[ -d "$cache_dir" ]] && dart_dirs+=("$cache_dir")
                 ;;
         esac
     done < <(LC_ALL=C sort -u "$matches_tmp_file" 2> /dev/null)
+
+    # Clean Next.js caches individually (usually few)
+    for cache_dir in "${next_dirs[@]+"${next_dirs[@]}"}"; do
+        safe_clean "$cache_dir"/* "Next.js build cache" || true
+    done
+
+    # Batch clean __pycache__ dirs in one safe_clean call
+    if [[ ${#pycache_dirs[@]} -gt 0 ]]; then
+        safe_clean "${pycache_dirs[@]}" "Python bytecode cache"
+    fi
+
+    # Clean Dart/Flutter caches
+    for cache_dir in "${dart_dirs[@]+"${dart_dirs[@]}"}"; do
+        safe_clean "$cache_dir" "Flutter build cache (.dart_tool)" || true
+        local build_dir="$(dirname "$cache_dir")/build"
+        if [[ -d "$build_dir" ]]; then
+            safe_clean "$build_dir" "Flutter build cache (build/)" || true
+        fi
+    done
 }

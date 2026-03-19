@@ -163,6 +163,9 @@ log_operation() {
     local log_line="[$timestamp] [$command] $action $path"
     [[ -n "$detail" ]] && log_line+=" ($detail)"
 
+    if [[ ! -d "$(dirname "$OPERATIONS_LOG_FILE")" ]]; then
+        mkdir -p "$(dirname "$OPERATIONS_LOG_FILE")" 2> /dev/null || return 0
+    fi
     echo "$log_line" >> "$OPERATIONS_LOG_FILE" 2> /dev/null || true
 }
 
