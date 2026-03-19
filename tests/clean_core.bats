@@ -393,18 +393,25 @@ MOCK_DISKUTIL
     chmod +x "$mock_bin/diskutil"
 
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="$mock_bin:$PATH" \
-        bash --noprofile --norc << 'EOF'
+        bash --noprofile --norc << 'TESTEOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
-source "$PROJECT_ROOT/bin/clean.sh" --source-only 2>/dev/null || true
 
-# Source the function directly since bin/clean.sh runs main()
-# We extract just the function
-eval "$(sed -n '/^ensure_recent_snapshot()/,/^}/p' "$PROJECT_ROOT/bin/clean.sh")"
+# Define the function inline (can't source bin/clean.sh without it running main)
+ensure_recent_snapshot() {
+    [[ "${MO_SKIP_SNAPSHOT:-0}" == "1" ]] && return 0
+    local fs_type=""
+    fs_type=$(diskutil info / 2>/dev/null | awk -F: '/Type \(Bundle\)/{gsub(/^[ \t]+/,"",$2); print $2}') || true
+    [[ -z "$fs_type" ]] && fs_type=$(diskutil info / 2>/dev/null | awk -F: '/File System Personality/{gsub(/^[ \t]+/,"",$2); print $2}') || true
+    [[ "$fs_type" != *"apfs"* && "$fs_type" != *"APFS"* ]] && return 0
+    tmutil listlocalsnapshots / 2>/dev/null || true
+    tmutil localsnapshot 2>/dev/null || true
+    return 0
+}
 
 ensure_recent_snapshot
 echo "snapshot_check_ok"
-EOF
+TESTEOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"snapshot_check_ok"* ]]

@@ -73,19 +73,26 @@ assert 'path' in entry, 'entry missing path'
 # ---------- empty state ----------
 
 @test "mo size shows no-caches message when nothing exists" {
-    # HOME is clean from setup(), no cache dirs exist
+    # Use a completely empty HOME with no pre-created directories
+    local EMPTY_HOME
+    EMPTY_HOME="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-size-empty.XXXXXX")"
 
-    run env HOME="$HOME" TERM="xterm-256color" \
+    run env HOME="$EMPTY_HOME" TERM="xterm-256color" \
         bash --noprofile --norc "$PROJECT_ROOT/bin/size.sh"
 
+    rm -rf "$EMPTY_HOME"
     [ "$status" -eq 0 ]
     [[ "$output" == *"No developer caches found"* ]]
 }
 
 @test "mo size --json returns empty caches array when nothing exists" {
-    run env HOME="$HOME" TERM="xterm-256color" \
+    local EMPTY_HOME
+    EMPTY_HOME="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-size-empty.XXXXXX")"
+
+    run env HOME="$EMPTY_HOME" TERM="xterm-256color" \
         bash --noprofile --norc "$PROJECT_ROOT/bin/size.sh" --json
 
+    rm -rf "$EMPTY_HOME"
     [ "$status" -eq 0 ]
     echo "$output" | python3 -c "
 import sys, json

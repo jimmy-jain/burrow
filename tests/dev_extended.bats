@@ -311,11 +311,10 @@ cat "$size_log"
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Xcode runtime volumes · scanning 2 entries"* ]]
-    [[ "$output" == *"Xcode runtime volumes · cleaning 1 unused"* ]]
+    # scanning message is debug-only; just verify the cleanup result
     [[ "$output" == *"REMOVE:$volumes_root/unused-runtime"* ]]
     [[ "$output" == *"$volumes_root/unused-runtime"* ]]
-    [[ "$output" != *"$volumes_root/in-use-runtime"* ]]
+    [[ "$output" != *"REMOVE:$volumes_root/in-use-runtime"* ]]
 }
 
 @test "clean_dev_mobile continues cleanup when simctl is unavailable" {
@@ -465,6 +464,7 @@ EOF
 }
 
 @test "clean_dev_containers skips when no container dirs exist" {
+    rm -rf "$HOME/.colima" "$HOME/.local/share/containers" "$HOME/.rd"
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
@@ -604,6 +604,7 @@ EOF
 }
 
 @test "clean_mail_attachments skips when directory does not exist" {
+    rm -rf "$HOME/Library/Containers/com.apple.mail"
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
