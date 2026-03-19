@@ -258,6 +258,13 @@ MOLE_SUDO_ESTABLISHED="false"
 _start_sudo_keepalive() {
     # Start background keepalive process with all outputs redirected
     # This is critical: command substitution waits for all file descriptors to close
+    #
+    # On some corporate machines, sudoers sets timestamp_timeout=0 which causes
+    # credentials to expire immediately. The keepalive detects this and writes
+    # a flag file so the parent process can skip further sudo operations.
+    local sudo_failed_flag="${TMPDIR:-/tmp}/mole_sudo_failed_$$"
+    export MOLE_SUDO_FAILED_FLAG="$sudo_failed_flag"
+
     (
         # Initial delay to let sudo cache stabilize after password entry
         sleep 2
@@ -273,6 +280,8 @@ _start_sudo_keepalive() {
             if ! sudo -n true 2> /dev/null; then
                 retry_count=$((retry_count + 1))
                 if [[ $retry_count -ge 3 ]]; then
+                    # Signal to parent that sudo session can't be maintained
+                    touch "$sudo_failed_flag" 2> /dev/null || true
                     exit 1
                 fi
                 sleep 5
@@ -297,8 +306,18 @@ _stop_sudo_keepalive() {
     fi
 }
 
-# Check if sudo session is active
+# Check if sudo session is active.
+# Returns false if the keepalive detected that credentials can't be maintained
+# (e.g., corporate sudoers with timestamp_timeout=0).
 has_sudo_session() {
+    # If keepalive has signalled failure, don't even try — avoids password prompts
+    if [[ -n "${MOLE_SUDO_FAILED_FLAG:-}" && -f "$MOLE_SUDO_FAILED_FLAG" ]]; then
+        return 1
+    fi
+    # Allow opt-out via environment variable
+    if [[ "${MO_SKIP_SUDO:-0}" == "1" ]]; then
+        return 1
+    fi
     sudo -n true 2> /dev/null
 }
 
@@ -321,6 +340,24 @@ request_sudo() {
 # Maintain active sudo session with keepalive
 ensure_sudo_session() {
     local prompt="${1:-Admin access required}"
+
+    # Allow opt-out via environment variable
+    if [[ "${MO_SKIP_SUDO:-0}" == "1" ]]; then
+        MOLE_SUDO_ESTABLISHED="false"
+        return 1
+    fi
+
+    # If keepalive previously signalled that credentials can't be maintained,
+    # skip silently to avoid repeated password prompts on corp machines.
+    if [[ -n "${MOLE_SUDO_FAILED_FLAG:-}" && -f "$MOLE_SUDO_FAILED_FLAG" ]]; then
+        if [[ "${MOLE_SUDO_LOST_WARNED:-}" != "true" ]]; then
+            export MOLE_SUDO_LOST_WARNED="true"
+            debug_log "Sudo session lost (keepalive failed), skipping system cleanup"
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${GRAY}Sudo session expired, skipping system-level items. Set MO_SKIP_SUDO=1 to suppress.${NC}" >&2
+        fi
+        MOLE_SUDO_ESTABLISHED="false"
+        return 1
+    fi
 
     # Check if already established
     if has_sudo_session && [[ "$MOLE_SUDO_ESTABLISHED" == "true" ]]; then
@@ -356,6 +393,10 @@ stop_sudo_session() {
     if [[ -n "$MOLE_SUDO_KEEPALIVE_PID" ]]; then
         _stop_sudo_keepalive "$MOLE_SUDO_KEEPALIVE_PID"
         MOLE_SUDO_KEEPALIVE_PID=""
+    fi
+    # Clean up the failed flag file
+    if [[ -n "${MOLE_SUDO_FAILED_FLAG:-}" ]]; then
+        rm -f "$MOLE_SUDO_FAILED_FLAG" 2>/dev/null || true
     fi
     MOLE_SUDO_ESTABLISHED="false"
 }
