@@ -1,0 +1,420 @@
+#!/bin/bash
+# Sudo Session Manager
+# Unified sudo authentication and keepalive management
+
+set -euo pipefail
+
+# ============================================================================
+# Touch ID and Clamshell Detection
+# ============================================================================
+
+check_touchid_support() {
+    # First: check that pam_tid.so is configured in PAM stack
+    local pam_configured=false
+    if [[ -f /etc/pam.d/sudo_local ]]; then
+        grep -q "pam_tid.so" /etc/pam.d/sudo_local 2> /dev/null && pam_configured=true
+    elif [[ -f /etc/pam.d/sudo ]]; then
+        grep -q "pam_tid.so" /etc/pam.d/sudo 2> /dev/null && pam_configured=true
+    fi
+
+    if [[ "$pam_configured" != "true" ]]; then
+        return 1
+    fi
+
+    # Second: verify Touch ID is actually usable (has enrolled fingerprints).
+    # Corporate MDM can disable biometric enrollment while leaving pam_tid.so
+    # in the PAM config, causing sudo -v to trigger a broken Touch ID prompt.
+    if command -v bioutil > /dev/null 2>&1; then
+        local bio_output=""
+        bio_output=$(bioutil -c -s 2>/dev/null || true)
+        if [[ -n "$bio_output" ]] && ! echo "$bio_output" | grep -q "count: [1-9]"; then
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# Detect clamshell mode (lid closed)
+is_clamshell_mode() {
+    # ioreg is missing (not macOS) -> treat as lid open
+    if ! command -v ioreg > /dev/null 2>&1; then
+        return 1
+    fi
+
+    # Check if lid is closed; ignore pipeline failures so set -e doesn't exit
+    local clamshell_state=""
+    clamshell_state=$( (ioreg -r -k AppleClamshellState -d 4 2> /dev/null |
+        grep "AppleClamshellState" |
+        head -1) || true)
+
+    if [[ "$clamshell_state" =~ \"AppleClamshellState\"\ =\ Yes ]]; then
+        return 0 # Lid is closed
+    fi
+    return 1 # Lid is open
+}
+
+_request_password() {
+    local tty_path="$1"
+    local attempts=0
+    local show_hint=true
+
+    # Extra safety: ensure sudo cache is cleared before password input
+    sudo -k 2> /dev/null
+
+    # Save original terminal settings and ensure they're restored on exit
+    local stty_orig
+    stty_orig=$(stty -g < "$tty_path" 2> /dev/null || echo "")
+    trap '[[ -n "${stty_orig:-}" ]] && stty "${stty_orig:-}" < "$tty_path" 2> /dev/null || true' RETURN
+
+    while ((attempts < 3)); do
+        local password=""
+
+        # Show hint on first attempt about Touch ID appearing again
+        if [[ $show_hint == true ]] && check_touchid_support; then
+            echo -e "${GRAY}Note: Touch ID dialog may appear once more, just cancel it${NC}" > "$tty_path"
+            show_hint=false
+        fi
+
+        printf "${PURPLE}${ICON_ARROW}${NC} Password: " > "$tty_path"
+
+        # Disable terminal echo to hide password input (keep canonical mode for reliable input)
+        stty -echo < "$tty_path" 2> /dev/null || true
+        IFS= read -r password < "$tty_path" || password=""
+        # Restore terminal echo immediately
+        stty echo < "$tty_path" 2> /dev/null || true
+
+        printf "\n" > "$tty_path"
+
+        if [[ -z "$password" ]]; then
+            unset password
+            attempts=$((attempts + 1))
+            if [[ $attempts -lt 3 ]]; then
+                echo -e "${GRAY}${ICON_WARNING}${NC} Password cannot be empty" > "$tty_path"
+            fi
+            continue
+        fi
+
+        # Verify password with sudo
+        # NOTE: macOS PAM will trigger Touch ID before password auth - this is system behavior
+        if printf '%s\n' "$password" | sudo -S -p "" -v > /dev/null 2>&1; then
+            unset password
+            return 0
+        fi
+
+        unset password
+        attempts=$((attempts + 1))
+        if [[ $attempts -lt 3 ]]; then
+            echo -e "${GRAY}${ICON_WARNING}${NC} Incorrect password, try again" > "$tty_path"
+        fi
+    done
+
+    return 1
+}
+
+request_sudo_access() {
+    local prompt_msg="${1:-Admin access required}"
+
+    # Check if already have sudo access
+    if sudo -n true 2> /dev/null; then
+        return 0
+    fi
+
+    # Tests must never trigger real password or Touch ID prompts.
+    if [[ "${BURROW_TEST_MODE:-0}" == "1" || "${BURROW_TEST_NO_AUTH:-0}" == "1" ]]; then
+        return 1
+    fi
+
+    # Detect if running in TTY environment
+    local tty_path="/dev/tty"
+    local is_gui_mode=false
+
+    if [[ ! -r "$tty_path" || ! -w "$tty_path" ]]; then
+        tty_path=$(tty 2> /dev/null || echo "")
+        if [[ -z "$tty_path" || ! -r "$tty_path" || ! -w "$tty_path" ]]; then
+            is_gui_mode=true
+        fi
+    fi
+
+    # GUI mode: use osascript for password dialog
+    if [[ "$is_gui_mode" == true ]]; then
+        # Clear sudo cache before attempting authentication
+        sudo -k 2> /dev/null
+
+        # Sanitize prompt_msg to prevent AppleScript injection via app names.
+        # App names come from disk (user-writable /Applications) and could
+        # contain quotes or AppleScript operators that break out of the string.
+        local safe_msg="${prompt_msg//\\/\\\\}"
+        safe_msg="${safe_msg//\"/\\\"}"
+
+        # Display native macOS password dialog
+        local password
+        password=$(osascript -e "display dialog \"$safe_msg\" default answer \"\" with title \"Burrow\" with icon caution with hidden answer" -e 'text returned of result' 2> /dev/null)
+
+        if [[ -z "$password" ]]; then
+            # User cancelled the dialog
+            unset password
+            return 1
+        fi
+
+        # Attempt sudo authentication with the provided password
+        if printf '%s\n' "$password" | sudo -S -p "" -v > /dev/null 2>&1; then
+            unset password
+            return 0
+        fi
+
+        # Password was incorrect
+        unset password
+        return 1
+    fi
+
+    sudo -k
+
+    # Check if in clamshell mode - if yes, skip Touch ID entirely
+    if is_clamshell_mode; then
+        echo -e "${PURPLE}${ICON_ARROW}${NC} ${prompt_msg}"
+        if _request_password "$tty_path"; then
+            # Clear all prompt lines (use safe clearing method)
+            safe_clear_lines 3 "$tty_path"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Not in clamshell mode - try Touch ID if configured
+    if ! check_touchid_support; then
+        echo -e "${PURPLE}${ICON_ARROW}${NC} ${prompt_msg}"
+        if _request_password "$tty_path"; then
+            # Clear all prompt lines (use safe clearing method)
+            safe_clear_lines 3 "$tty_path"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Touch ID is available and not in clamshell mode
+    echo -e "${PURPLE}${ICON_ARROW}${NC} ${prompt_msg} ${GRAY}, Touch ID or password${NC}"
+
+    # Start sudo in background so we can monitor and control it
+    sudo -v < /dev/null > /dev/null 2>&1 &
+    local sudo_pid=$!
+
+    # Wait for sudo to complete or timeout (5 seconds)
+    local elapsed=0
+    local timeout=50 # 50 * 0.1s = 5 seconds
+    while ((elapsed < timeout)); do
+        if ! kill -0 "$sudo_pid" 2> /dev/null; then
+            # Process exited
+            wait "$sudo_pid" 2> /dev/null
+            local exit_code=$?
+            if [[ $exit_code -eq 0 ]] && sudo -n true 2> /dev/null; then
+                # Touch ID succeeded - clear the prompt line
+                safe_clear_lines 1 "$tty_path"
+                return 0
+            fi
+            # Touch ID failed or cancelled
+            break
+        fi
+        sleep 0.1
+        elapsed=$((elapsed + 1))
+    done
+
+    # Touch ID failed/cancelled - clean up thoroughly before password input
+
+    # Kill the sudo process if still running
+    if kill -0 "$sudo_pid" 2> /dev/null; then
+        kill -9 "$sudo_pid" 2> /dev/null
+        wait "$sudo_pid" 2> /dev/null || true
+    fi
+
+    # Clear sudo state immediately
+    sudo -k 2> /dev/null
+
+    # IMPORTANT: Wait longer for macOS to fully close Touch ID UI and SecurityAgent
+    # Without this delay, subsequent sudo calls may re-trigger Touch ID
+    sleep 1
+
+    # Clear any leftover prompts on the screen
+    safe_clear_line "$tty_path"
+
+    # Now use our password input (this should not trigger Touch ID again)
+    if _request_password "$tty_path"; then
+        # Clear all prompt lines (use safe clearing method)
+        safe_clear_lines 3 "$tty_path"
+        return 0
+    fi
+    return 1
+}
+
+# ============================================================================
+# Sudo Session Management
+# ============================================================================
+
+# Global state
+BURROW_SUDO_KEEPALIVE_PID=""
+BURROW_SUDO_ESTABLISHED="false"
+
+# Start sudo keepalive
+_start_sudo_keepalive() {
+    # Start background keepalive process with all outputs redirected
+    # This is critical: command substitution waits for all file descriptors to close
+    #
+    # On some corporate machines, sudoers sets timestamp_timeout=0 which causes
+    # credentials to expire immediately. The keepalive detects this and writes
+    # a flag file so the parent process can skip further sudo operations.
+    local sudo_failed_flag="${TMPDIR:-/tmp}/burrow_sudo_failed_$$"
+    export BURROW_SUDO_FAILED_FLAG="$sudo_failed_flag"
+
+    (
+        # Initial delay to let sudo cache stabilize after password entry
+        sleep 2
+
+        local retry_count=0
+        while true; do
+            # Use "sudo -n true" instead of "sudo -n -v" to avoid pam_tid.so
+            # interference on machines where Touch ID is configured but disabled
+            # (e.g., corporate MDM). "sudo -n -v" triggers the full PAM stack
+            # including Touch ID, which fails and causes the keepalive to
+            # self-terminate after 3 retries. "sudo -n true" only checks the
+            # existing credential cache without re-triggering authentication.
+            if ! sudo -n true 2> /dev/null; then
+                retry_count=$((retry_count + 1))
+                if [[ $retry_count -ge 3 ]]; then
+                    # Signal to parent that sudo session can't be maintained
+                    touch "$sudo_failed_flag" 2> /dev/null || true
+                    exit 1
+                fi
+                sleep 5
+                continue
+            fi
+            retry_count=0
+            sleep 30
+            kill -0 "$$" 2> /dev/null || exit
+        done
+    ) > /dev/null 2>&1 &
+
+    local pid=$!
+    echo $pid
+}
+
+# Stop sudo keepalive
+_stop_sudo_keepalive() {
+    local pid="${1:-}"
+    if [[ -n "$pid" ]]; then
+        kill "$pid" 2> /dev/null || true
+        wait "$pid" 2> /dev/null || true
+    fi
+}
+
+# Check if sudo session is active.
+# Returns false if the keepalive detected that credentials can't be maintained
+# (e.g., corporate sudoers with timestamp_timeout=0).
+has_sudo_session() {
+    # If keepalive has signalled failure, don't even try — avoids password prompts
+    if [[ -n "${BURROW_SUDO_FAILED_FLAG:-}" && -f "$BURROW_SUDO_FAILED_FLAG" ]]; then
+        return 1
+    fi
+    # Allow opt-out via environment variable
+    if [[ "${BW_SKIP_SUDO:-0}" == "1" ]]; then
+        return 1
+    fi
+    sudo -n true 2> /dev/null
+}
+
+# Request administrative access
+request_sudo() {
+    local prompt_msg="${1:-Admin access required}"
+
+    if has_sudo_session; then
+        return 0
+    fi
+
+    # Use the robust implementation from common.sh
+    if request_sudo_access "$prompt_msg"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Maintain active sudo session with keepalive
+ensure_sudo_session() {
+    local prompt="${1:-Admin access required}"
+
+    # Allow opt-out via environment variable
+    if [[ "${BW_SKIP_SUDO:-0}" == "1" ]]; then
+        BURROW_SUDO_ESTABLISHED="false"
+        return 1
+    fi
+
+    # If keepalive previously signalled that credentials can't be maintained,
+    # skip silently to avoid repeated password prompts on corp machines.
+    if [[ -n "${BURROW_SUDO_FAILED_FLAG:-}" && -f "$BURROW_SUDO_FAILED_FLAG" ]]; then
+        if [[ "${BURROW_SUDO_LOST_WARNED:-}" != "true" ]]; then
+            export BURROW_SUDO_LOST_WARNED="true"
+            debug_log "Sudo session lost (keepalive failed), skipping system cleanup"
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${GRAY}Sudo session expired, skipping system-level items. Set BW_SKIP_SUDO=1 to suppress.${NC}" >&2
+        fi
+        BURROW_SUDO_ESTABLISHED="false"
+        return 1
+    fi
+
+    # Check if already established
+    if has_sudo_session && [[ "$BURROW_SUDO_ESTABLISHED" == "true" ]]; then
+        return 0
+    fi
+
+    if [[ "${BURROW_TEST_MODE:-0}" == "1" || "${BURROW_TEST_NO_AUTH:-0}" == "1" ]]; then
+        BURROW_SUDO_ESTABLISHED="false"
+        return 1
+    fi
+
+    # Stop old keepalive if exists
+    if [[ -n "$BURROW_SUDO_KEEPALIVE_PID" ]]; then
+        _stop_sudo_keepalive "$BURROW_SUDO_KEEPALIVE_PID"
+        BURROW_SUDO_KEEPALIVE_PID=""
+    fi
+
+    # Request sudo access
+    if ! request_sudo "$prompt"; then
+        BURROW_SUDO_ESTABLISHED="false"
+        return 1
+    fi
+
+    # Start keepalive
+    BURROW_SUDO_KEEPALIVE_PID=$(_start_sudo_keepalive)
+
+    BURROW_SUDO_ESTABLISHED="true"
+    return 0
+}
+
+# Stop sudo session and cleanup
+stop_sudo_session() {
+    if [[ -n "$BURROW_SUDO_KEEPALIVE_PID" ]]; then
+        _stop_sudo_keepalive "$BURROW_SUDO_KEEPALIVE_PID"
+        BURROW_SUDO_KEEPALIVE_PID=""
+    fi
+    # Clean up the failed flag file
+    if [[ -n "${BURROW_SUDO_FAILED_FLAG:-}" ]]; then
+        rm -f "$BURROW_SUDO_FAILED_FLAG" 2>/dev/null || true
+    fi
+    BURROW_SUDO_ESTABLISHED="false"
+}
+
+# Register cleanup on script exit
+register_sudo_cleanup() {
+    trap stop_sudo_session EXIT INT TERM
+}
+
+# Predict if operation requires administrative access
+will_need_sudo() {
+    local -a operations=("$@")
+    for op in "${operations[@]}"; do
+        case "$op" in
+            system_update | appstore_update | macos_update | firewall | touchid | rosetta | system_fix)
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
