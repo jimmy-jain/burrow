@@ -25,8 +25,8 @@ _json_escape() {
 # Collect the macOS marketing version (e.g. "15.3").
 _get_os_version() {
     local ver=""
-    if command -v sw_vers >/dev/null 2>&1; then
-        ver=$(sw_vers -productVersion 2>/dev/null || true)
+    if command -v sw_vers > /dev/null 2>&1; then
+        ver=$(sw_vers -productVersion 2> /dev/null || true)
     fi
     if [[ -z "$ver" ]]; then
         ver="unknown"
@@ -36,12 +36,12 @@ _get_os_version() {
 
 # Collect the hardware architecture (arm64 / x86_64).
 _get_architecture() {
-    uname -m 2>/dev/null || printf 'unknown'
+    uname -m 2> /dev/null || printf 'unknown'
 }
 
 # Collect free disk space as a human-readable string (e.g. "150GB").
 _get_report_free_space() {
-    if type get_free_space >/dev/null 2>&1; then
+    if type get_free_space > /dev/null 2>&1; then
         get_free_space
     else
         local target="/"
@@ -64,15 +64,15 @@ _get_cleanup_potential() {
         bw_bin="$SCRIPT_DIR/../burrow"
     elif [[ -n "${SCRIPT_DIR:-}" && -x "$SCRIPT_DIR/../bw" ]]; then
         bw_bin="$SCRIPT_DIR/../bw"
-    elif command -v bw >/dev/null 2>&1; then
+    elif command -v bw > /dev/null 2>&1; then
         bw_bin="bw"
-    elif command -v burrow >/dev/null 2>&1; then
+    elif command -v burrow > /dev/null 2>&1; then
         bw_bin="burrow"
     fi
 
     if [[ -n "$bw_bin" ]]; then
         local dry_output=""
-        dry_output=$("$bw_bin" clean --dry-run 2>/dev/null || true)
+        dry_output=$("$bw_bin" clean --dry-run 2> /dev/null || true)
 
         # Try to extract "Potential space: X.XXGB" from the summary
         local match=""
@@ -86,7 +86,7 @@ _get_cleanup_potential() {
             # Pad or truncate fractional part to 2 digits
             while [[ ${#frac} -lt 2 ]]; do frac="${frac}0"; done
             frac="${frac:0:2}"
-            potential_bytes=$(( (whole * 100 + ${frac#0}) * 10000000 ))
+            potential_bytes=$(((whole * 100 + ${frac#0}) * 10000000))
         fi
     fi
 
@@ -110,7 +110,7 @@ report_main() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --help|-h)
+            --help | -h)
                 _report_usage
                 return 0
                 ;;
@@ -137,7 +137,7 @@ report_main() {
     local version="2.0.0"
 
     local hostname_val
-    hostname_val=$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf 'unknown')
+    hostname_val=$(hostname -s 2> /dev/null || hostname 2> /dev/null || printf 'unknown')
 
     local os_version
     os_version=$(_get_os_version)

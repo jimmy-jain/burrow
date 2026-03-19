@@ -37,10 +37,10 @@ const (
 	ioHighThreshold   = 150.0
 
 	// Battery.
-	batteryWarnThreshold     = 80 // Below this, mild penalty
-	batteryCritThreshold     = 70 // Below this, stronger penalty
-	batteryWarnPenalty       = 5.0
-	batteryCritPenalty       = 10.0
+	batteryWarnThreshold = 80 // Below this, mild penalty
+	batteryCritThreshold = 70 // Below this, stronger penalty
+	batteryWarnPenalty   = 5.0
+	batteryCritPenalty   = 10.0
 )
 
 func calculateHealthScore(cpu CPUStatus, mem MemoryStatus, disks []DiskStatus, diskIO DiskIOStatus, thermal ThermalStatus, batts []BatteryStatus) (int, string) {

@@ -26,7 +26,7 @@ check_touchid_support() {
     # in the PAM config, causing sudo -v to trigger a broken Touch ID prompt.
     if command -v bioutil > /dev/null 2>&1; then
         local bio_output=""
-        bio_output=$(bioutil -c -s 2>/dev/null || true)
+        bio_output=$(bioutil -c -s 2> /dev/null || true)
         if [[ -n "$bio_output" ]] && ! echo "$bio_output" | grep -q "count: [1-9]"; then
             return 1
         fi
@@ -396,7 +396,7 @@ stop_sudo_session() {
     fi
     # Clean up the failed flag file
     if [[ -n "${BURROW_SUDO_FAILED_FLAG:-}" ]]; then
-        rm -f "$BURROW_SUDO_FAILED_FLAG" 2>/dev/null || true
+        rm -f "$BURROW_SUDO_FAILED_FLAG" 2> /dev/null || true
     fi
     BURROW_SUDO_ESTABLISHED="false"
 }

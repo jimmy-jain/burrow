@@ -87,7 +87,7 @@ parse_log_timestamp() {
     local epoch=""
 
     # BSD date: -j prevents setting date, -f specifies input format
-    epoch=$(date -j -f "%Y-%m-%d %H:%M:%S" "$timestamp" "+%s" 2>/dev/null || echo "")
+    epoch=$(date -j -f "%Y-%m-%d %H:%M:%S" "$timestamp" "+%s" 2> /dev/null || echo "")
 
     echo "$epoch"
 }
@@ -137,11 +137,11 @@ format_log_line() {
     # Color-code the action
     local action_color=""
     case "$action" in
-        REMOVED)  action_color="${GREEN}" ;;
-        SKIPPED)  action_color="${YELLOW}" ;;
-        FAILED)   action_color="${RED}" ;;
-        REBUILT)  action_color="${BLUE}" ;;
-        *)        action_color="${NC}" ;;
+        REMOVED) action_color="${GREEN}" ;;
+        SKIPPED) action_color="${YELLOW}" ;;
+        FAILED) action_color="${RED}" ;;
+        REBUILT) action_color="${BLUE}" ;;
+        *) action_color="${NC}" ;;
     esac
 
     # Build formatted output
@@ -276,10 +276,10 @@ main() {
 
     # Apply --tail filter
     if [[ -n "$tail_count" ]] && [[ ${#filtered_lines[@]} -gt "$tail_count" ]]; then
-        local start_idx=$(( ${#filtered_lines[@]} - tail_count ))
+        local start_idx=$((${#filtered_lines[@]} - tail_count))
         local -a tail_lines=()
         local i
-        for (( i = start_idx; i < ${#filtered_lines[@]}; i++ )); do
+        for ((i = start_idx; i < ${#filtered_lines[@]}; i++)); do
             tail_lines+=("${filtered_lines[$i]}")
         done
         filtered_lines=("${tail_lines[@]}")
