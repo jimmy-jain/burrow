@@ -53,8 +53,11 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
         fi
 
         if [[ "$line" != "$FINDER_METADATA_SENTINEL" ]]; then
-            if [[ ! "$line" =~ ^[a-zA-Z0-9/_.@\ *-]+$ ]]; then
-                WHITELIST_WARNINGS+=("Invalid path format: $line")
+            # Reject paths containing control characters or newlines.
+            # Previous regex rejected legitimate chars like (), [], +, ~,
+            # CJK characters, and accented directory names (e.g. /Users/María).
+            if [[ "$line" =~ [[:cntrl:]] ]] || [[ "$line" =~ $'\n' ]]; then
+                WHITELIST_WARNINGS+=("Invalid path format (contains control characters): $line")
                 continue
             fi
 

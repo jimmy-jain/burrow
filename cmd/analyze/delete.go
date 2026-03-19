@@ -90,6 +90,9 @@ func trashPathWithProgress(root string, counter *int64) (int64, error) {
 	}
 
 	// Count items for progress reporting.
+	// Use atomic.AddInt64 instead of StoreInt64 so that when
+	// deleteMultiplePathsCmd processes several paths, the counter
+	// accumulates across all paths instead of resetting for each one.
 	var count int64
 	if info.IsDir() {
 		_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
@@ -99,7 +102,7 @@ func trashPathWithProgress(root string, counter *int64) (int64, error) {
 			if !d.IsDir() {
 				count++
 				if counter != nil {
-					atomic.StoreInt64(counter, count)
+					atomic.AddInt64(counter, 1)
 				}
 			}
 			return nil
@@ -107,7 +110,7 @@ func trashPathWithProgress(root string, counter *int64) (int64, error) {
 	} else {
 		count = 1
 		if counter != nil {
-			atomic.StoreInt64(counter, 1)
+			atomic.AddInt64(counter, 1)
 		}
 	}
 

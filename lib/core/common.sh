@@ -192,29 +192,25 @@ remove_apps_from_dock() {
 
         local encoded_path="${full_path// /%20}"
 
-        # Find the index of the app in persistent-apps
-        local i=0
-        while true; do
-            local label
-            label=$(/usr/libexec/PlistBuddy -c "Print :persistent-apps:$i:tile-data:file-label" "$plist" 2> /dev/null || echo "")
-            [[ -z "$label" ]] && break
+        # Find the index of the app in persistent-apps.
+        # Iterate backwards so that deleting an entry doesn't shift
+        # the indices of items we haven't checked yet.
+        local count=0
+        while /usr/libexec/PlistBuddy -c "Print :persistent-apps:$count:tile-data:file-label" "$plist" > /dev/null 2>&1; do
+            count=$((count + 1))
+        done
 
+        local i=$((count - 1))
+        while [[ $i -ge 0 ]]; do
             local url
             url=$(/usr/libexec/PlistBuddy -c "Print :persistent-apps:$i:tile-data:file-data:_CFURLString" "$plist" 2> /dev/null || echo "")
-            [[ -z "$url" ]] && {
-                i=$((i + 1))
-                continue
-            }
 
-            # Match by URL-encoded path to handle spaces in app names
-            if [[ -n "$encoded_path" && "$url" == *"$encoded_path"* ]]; then
+            if [[ -n "$encoded_path" && -n "$url" && "$url" == *"$encoded_path"* ]]; then
                 if /usr/libexec/PlistBuddy -c "Delete :persistent-apps:$i" "$plist" 2> /dev/null; then
                     changed=true
-                    # After deletion, current index i now points to the next item
-                    continue
                 fi
             fi
-            i=$((i + 1))
+            i=$((i - 1))
         done
     done
 

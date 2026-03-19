@@ -274,14 +274,25 @@ func saveCacheToDisk(path string, result scanResult) error {
 		ScanTime:   time.Now(),
 	}
 
-	file, err := os.Create(cachePath)
+	// Write to a temp file then atomically rename to avoid leaving a
+	// corrupt/truncated cache file on disk-full or interruption.
+	tmpPath := cachePath + ".tmp"
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close() //nolint:errcheck
 
 	encoder := gob.NewEncoder(file)
-	return encoder.Encode(entry)
+	if err := encoder.Encode(entry); err != nil {
+		file.Close() //nolint:errcheck
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, cachePath)
 }
 
 // peekCacheTotalFiles attempts to read the total file count from cache,

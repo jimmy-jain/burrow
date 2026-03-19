@@ -159,15 +159,15 @@ check_for_updates() {
                     local brew_latest
                     brew_latest=$(get_homebrew_latest_version || true)
                     if [[ -n "$brew_latest" && "$brew_latest" != "$VERSION" && "$(printf '%s\n' "$VERSION" "$brew_latest" | sort -V | head -1)" == "$VERSION" ]]; then
-                        printf "\nUpdate %s available, run %smo update%s\n\n" "$brew_latest" "$GREEN" "$NC" > "$msg_cache"
+                        printf "\nUpdate %s available, run %smo update%s\n\n" "$brew_latest" "$GREEN" "$NC" > "${msg_cache}.tmp" && mv -f "${msg_cache}.tmp" "$msg_cache"
                     else
-                        echo -n > "$msg_cache"
+                        echo -n > "${msg_cache}.tmp" && mv -f "${msg_cache}.tmp" "$msg_cache"
                     fi
                 else
-                    printf "\nUpdate %s available, run %smo update%s\n\n" "$latest" "$GREEN" "$NC" > "$msg_cache"
+                    printf "\nUpdate %s available, run %smo update%s\n\n" "$latest" "$GREEN" "$NC" > "${msg_cache}.tmp" && mv -f "${msg_cache}.tmp" "$msg_cache"
                 fi
             else
-                echo -n > "$msg_cache"
+                echo -n > "${msg_cache}.tmp" && mv -f "${msg_cache}.tmp" "$msg_cache"
             fi
         ) > /dev/null 2>&1 < /dev/null &
     )
@@ -475,14 +475,26 @@ update_mole() {
         if install_output=$(MOLE_VERSION="$update_tag" "$tmp_installer" --prefix "$install_dir" --config "$config_dir" --update 2>&1); then
             process_install_output "$install_output" "$latest" "$final_success_label"
         else
-            if install_output=$(MOLE_VERSION="$update_tag" "$tmp_installer" --prefix "$install_dir" --config "$config_dir" 2>&1); then
-                process_install_output "$install_output" "$latest" "$final_success_label"
+            # Only retry without --update if the installer doesn't recognize the flag.
+            # Retrying unconditionally masks legitimate errors (corrupt download,
+            # missing permissions) and may install an unexpected version.
+            if echo "$install_output" | grep -qi "unknown option\|Unknown option\|unrecognized option"; then
+                if install_output=$(MOLE_VERSION="$update_tag" "$tmp_installer" --prefix "$install_dir" --config "$config_dir" 2>&1); then
+                    process_install_output "$install_output" "$latest" "$final_success_label"
+                else
+                    if [[ -t 1 ]]; then stop_inline_spinner; fi
+                    rm -f "$tmp_installer"
+                    _update_cleanup
+                    log_error "Update failed"
+                    echo "$install_output" | tail -10 >&2
+                    exit 1
+                fi
             else
                 if [[ -t 1 ]]; then stop_inline_spinner; fi
                 rm -f "$tmp_installer"
                 _update_cleanup
                 log_error "Update failed"
-                echo "$install_output" | tail -10 >&2 # Show last 10 lines of error
+                echo "$install_output" | tail -10 >&2
                 exit 1
             fi
         fi

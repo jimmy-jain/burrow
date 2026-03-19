@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -88,7 +89,9 @@ func isZeroLoad(avg load.AvgStat) bool {
 }
 
 var (
-	// Cache for core topology.
+	// Cache for core topology, protected by mutex to prevent data races
+	// when multiple goroutines call getCoreTopology concurrently.
+	topologyMu       sync.Mutex
 	lastTopologyAt   time.Time
 	cachedP, cachedE int
 	topologyTTL      = 10 * time.Minute
@@ -99,6 +102,9 @@ func getCoreTopology() (pCores, eCores int) {
 	if runtime.GOOS != "darwin" {
 		return 0, 0
 	}
+
+	topologyMu.Lock()
+	defer topologyMu.Unlock()
 
 	now := time.Now()
 	if cachedP > 0 || cachedE > 0 {
