@@ -9,9 +9,6 @@ const (
 	partialHashSize = 4096       // 4KB for partial hash (fast rejection).
 	hashBufferSize  = 128 * 1024 // 128KB streaming read buffer.
 
-	// Default minimum file size to consider (skip tiny files).
-	defaultMinSize = 1024 // 1KB
-
 	// Worker pool limits.
 	minScanWorkers = 8
 	maxScanWorkers = 64

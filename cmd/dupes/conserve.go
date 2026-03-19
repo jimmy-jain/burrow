@@ -283,7 +283,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer srcFile.Close() //nolint:errcheck // best-effort close on read-only file
 
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
@@ -294,7 +294,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer dstFile.Close() //nolint:errcheck // error checked via io.CopyBuffer return
 
 	bufPtr := bufPool.Get().(*[]byte)
 	defer bufPool.Put(bufPtr)

@@ -44,7 +44,9 @@ jobs:
 
       - name: Build for CodeQL
         if: matrix.build-mode == 'manual'
-        run: make build
+        env:
+          GOOS: darwin
+        run: go build ./...
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4

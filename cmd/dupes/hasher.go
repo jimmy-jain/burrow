@@ -26,7 +26,7 @@ func hashFilePartial(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 
 	buf := make([]byte, partialHashSize)
 	n, err := io.ReadFull(f, buf)
@@ -45,7 +45,7 @@ func hashFileFull(path string, expectedSize int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 
 	// Re-check size before hashing to detect modification.
 	info, err := f.Stat()

@@ -378,13 +378,11 @@ func TestCooldownConcurrency(t *testing.T) {
 	rule := Rule{Metric: "cpu_percent", Operator: ">", Threshold: 90}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			cd.OnCooldown(rule)
 			cd.Record(rule)
-		}()
+		})
 	}
 	wg.Wait()
 

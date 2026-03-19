@@ -72,15 +72,12 @@ func collectBatteryHealth() int {
 	}
 
 	health := (maxCap * 100) / designCap
-	if health > 100 {
-		health = 100
-	}
-	return health
+	return min(health, 100)
 }
 
 // extractIORegInt extracts an integer value from ioreg output for the given key.
 func extractIORegInt(output, key string) int {
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if strings.Contains(line, key) {
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {

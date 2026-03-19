@@ -153,7 +153,7 @@ func handleAnalyze(exec *Executor) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		path, err := request.RequireString("path")
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("missing required parameter: path")), nil
+			return mcp.NewToolResultError("missing required parameter: path"), nil
 		}
 		return runCommand(ctx, exec, "analyze", "--json", path)
 	}

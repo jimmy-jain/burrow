@@ -92,7 +92,7 @@ func formatReport(groups []DupeGroup) string {
 			colorYellow, humanizeBytes(reclaimable), colorReset)
 
 		for j, f := range g.Files {
-			marker := "  "
+			var marker string
 			if j == 0 {
 				marker = colorGreen + "  ✓" + colorReset
 			} else {

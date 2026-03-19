@@ -123,7 +123,7 @@ func ParseRulesFromFile(path string) ([]Rule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening rules file: %w", err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 
 	return ParseRulesFromReader(f)
 }
