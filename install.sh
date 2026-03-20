@@ -15,17 +15,17 @@ _SPINNER_PID=""
 start_line_spinner() {
     local msg="$1"
     [[ ! -t 1 ]] && {
-        echo -e "${BLUE}|${NC} $msg"
+        echo -e "\033[38;5;214m* ${NC}$msg"
         return
     }
-    local chars="|/-\\"
-    [[ -z "$chars" ]] && chars='|/-\\'
+    local -a _frames=("*" "·")
     local i=0
+    local _amber=$'\033[38;5;214m'
     (while true; do
-        c="${chars:$((i % ${#chars})):1}"
-        printf "\r${BLUE}%s${NC} %s" "$c" "$msg"
+        local c="${_frames[$((i % 2))]}"
+        printf "\r${_amber}%s %s\033[0m" "$c" "$msg"
         ((i++))
-        sleep 0.12
+        sleep 0.4
     done) &
     _SPINNER_PID=$!
 }
@@ -109,6 +109,17 @@ maybe_sudo() {
         sudo "$@"
     else
         "$@"
+    fi
+}
+
+# Cache sudo credentials once upfront to avoid repeated password prompts.
+cache_sudo_if_needed() {
+    if needs_sudo; then
+        log_admin "Admin access required for $INSTALL_DIR"
+        sudo -v 2>/dev/null || {
+            log_error "Failed to obtain admin access"
+            exit 1
+        }
     fi
 }
 
@@ -585,10 +596,6 @@ install_files() {
 
     if [[ -f "$SOURCE_DIR/burrow" ]]; then
         if [[ "$source_dir_abs" != "$install_dir_abs" ]]; then
-            if needs_sudo; then
-                log_admin "Admin access required for /usr/local/bin"
-            fi
-
             # Atomic update: copy to temporary name first, then move
             maybe_sudo cp "$SOURCE_DIR/burrow" "$INSTALL_DIR/burrow.new"
             maybe_sudo chmod +x "$INSTALL_DIR/burrow.new"
@@ -751,6 +758,7 @@ perform_install() {
     source_version="$(get_source_version || true)"
 
     check_requirements
+    cache_sudo_if_needed
     create_directories
     install_files
     verify_installation

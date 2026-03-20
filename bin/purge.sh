@@ -162,14 +162,10 @@ perform_purge() {
 
         # Start background monitor: writes directly to /dev/tty to avoid stdout state issues
         (
-            local -a spinner_colors=(
-                $'\033[38;5;130m' $'\033[38;5;172m' $'\033[38;5;208m'
-                $'\033[38;5;214m' $'\033[38;5;220m' $'\033[38;5;214m'
-                $'\033[38;5;208m' $'\033[38;5;172m' $'\033[38;5;130m'
-                $'\033[38;5;94m'
-            )
+            local -a spinner_frames=("*" "·")
             local spinner_idx=0
-            local spinner_color_count=${#spinner_colors[@]}
+            local spinner_frame_count=2
+            local amber=$'\033[38;5;214m'
             local last_path=""
             # Use parent-captured width; never refresh inside the loop (avoids unreliable tput in bg)
             local term_cols="$_parent_cols"
@@ -190,20 +186,20 @@ perform_purge() {
                     last_path="$display_path"
                 fi
 
-                local spin_color="${spinner_colors[$((spinner_idx % spinner_color_count))]}"
+                local spin_char="${spinner_frames[$((spinner_idx % spinner_frame_count))]}"
                 spinner_idx=$((spinner_idx + 1))
 
                 # Write directly to /dev/tty: \033[2K clears entire current line, \r goes to start
                 if [[ -n "$last_path" ]]; then
-                    printf '\r\033[2K%s* Scanning %s\033[0m' \
-                        "${spin_color}" \
+                    printf '\r\033[2K%s%s Scanning %s\033[0m' \
+                        "${amber}" "${spin_char}" \
                         "$last_path" > /dev/tty 2> /dev/null
                 else
-                    printf '\r\033[2K%s* Scanning...\033[0m' \
-                        "${spin_color}" > /dev/tty 2> /dev/null
+                    printf '\r\033[2K%s%s Scanning...\033[0m' \
+                        "${amber}" "${spin_char}" > /dev/tty 2> /dev/null
                 fi
 
-                sleep 0.05
+                sleep 0.4
             done
             printf '\r\033[2K' > /dev/tty 2> /dev/null
             exit 0

@@ -328,15 +328,9 @@ start_inline_spinner() {
 
         (
             local stop_file="$INLINE_SPINNER_STOP_FILE"
-            # Warm gradient: dark amber → bright orange → amber (breathing effect)
-            local -a colors=(
-                $'\033[38;5;130m' $'\033[38;5;172m' $'\033[38;5;208m'
-                $'\033[38;5;214m' $'\033[38;5;220m' $'\033[38;5;214m'
-                $'\033[38;5;208m' $'\033[38;5;172m' $'\033[38;5;130m'
-                $'\033[38;5;94m'
-            )
+            local -a frames=("*" "·")
             local i=0
-            local color_count=${#colors[@]}
+            local amber=$'\033[38;5;214m'
             local reset=$'\033[0m'
 
             # Clear line on first output to prevent text remnants from previous messages
@@ -344,11 +338,10 @@ start_inline_spinner() {
 
             # Cooperative exit: check for stop file instead of relying on signals
             while [[ ! -f "$stop_file" ]]; do
-                local clr="${colors[$((i % color_count))]}"
-                # Output to stderr to avoid interfering with stdout
-                printf "\r${BURROW_SPINNER_PREFIX:-}${clr}* %s${reset}" "$display_message" >&2 || break
+                local c="${frames[$((i % 2))]}"
+                printf "\r${BURROW_SPINNER_PREFIX:-}${amber}%s %s${reset}" "$c" "$display_message" >&2 || break
                 i=$((i + 1))
-                /bin/sleep 0.12
+                /bin/sleep 0.4
             done
 
             # Clean up stop file before exiting
