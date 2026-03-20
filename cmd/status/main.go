@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -55,8 +54,6 @@ type model struct {
 	ready       bool
 	lastUpdated time.Time
 	collecting  bool
-	animFrame   int
-	catHidden   bool // true = hidden, false = visible
 }
 
 // getConfigPath returns the path to the status preferences file.
@@ -68,41 +65,9 @@ func getConfigPath() string {
 	return filepath.Join(home, ".config", "burrow", "status_prefs")
 }
 
-// loadCatHidden loads the cat hidden preference from config file.
-func loadCatHidden() bool {
-	path := getConfigPath()
-	if path == "" {
-		return false
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	return strings.TrimSpace(string(data)) == "cat_hidden=true"
-}
-
-// saveCatHidden saves the cat hidden preference to config file.
-func saveCatHidden(hidden bool) {
-	path := getConfigPath()
-	if path == "" {
-		return
-	}
-	// Ensure directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return
-	}
-	value := "cat_hidden=false"
-	if hidden {
-		value = "cat_hidden=true"
-	}
-	_ = os.WriteFile(path, []byte(value+"\n"), 0644)
-}
-
 func newModel() model {
 	return model{
 		collector: NewCollector(),
-		catHidden: loadCatHidden(),
 	}
 }
 
@@ -116,13 +81,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
-		case "c":
-			// Toggle cat visibility and persist preference.
-			// Uses "c" instead of "k" to avoid conflicting with
-			// vim navigation (j/k) used in all other burrow commands.
-			m.catHidden = !m.catHidden
-			saveCatHidden(m.catHidden)
-			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -149,7 +107,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickAfter(refreshInterval)
 	case animTickMsg:
-		m.animFrame++
 		return m, animTickWithSpeed(m.metrics.CPU.Usage)
 	}
 	return m, nil
@@ -165,7 +122,7 @@ func (m model) View() string {
 		termWidth = 80
 	}
 
-	header, mascot := renderHeader(m.metrics, m.errMessage, m.animFrame, termWidth, m.catHidden)
+	header, mascot := renderHeader(m.metrics, m.errMessage, termWidth)
 
 	if termWidth <= 80 {
 		cardWidth := termWidth

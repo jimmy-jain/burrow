@@ -10,119 +10,27 @@ import (
 )
 
 var (
-	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#C79FD7")).Bold(true)
-	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#737373"))
-	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F"))
-	dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Bold(true)
-	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5D6A7"))
-	lineStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#404040"))
+	titleStyle  = lipgloss.NewStyle().Bold(true)
+	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#E0A050"))
+	dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#D07070")).Bold(true)
+	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#87AF87"))
+	lineStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A"))
 
-	primaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#BD93F9"))
+	primaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#AF87AF"))
 )
 
 const (
 	colWidth    = 38
-	iconCPU     = "◉"
-	iconMemory  = "◫"
-	iconGPU     = "◧"
-	iconDisk    = "▥"
-	iconNetwork = "⇅"
-	iconBattery = "◪"
-	iconSensors = "◈"
-	iconProcs   = "❊"
+	iconCPU     = "●"
+	iconMemory  = "●"
+	iconGPU     = "●"
+	iconDisk    = "●"
+	iconNetwork = "●"
+	iconBattery = "●"
+	iconSensors = "●"
+	iconProcs   = "●"
 )
-
-// Burrow body frames (facing right).
-var burrowBody = [][]string{
-	{
-		`     /\_/\`,
-		` ___/ o o \`,
-		`/___   =-= /`,
-		`\____)-m-m)`,
-	},
-	{
-		`     /\_/\`,
-		` ___/ o o \`,
-		`/___   =-= /`,
-		`\____)mm__)`,
-	},
-	{
-		`     /\_/\`,
-		` ___/ · · \`,
-		`/___   =-= /`,
-		`\___)-m__m)`,
-	},
-	{
-		`     /\_/\`,
-		` ___/ o o \`,
-		`/___   =-= /`,
-		`\____)-mm-)`,
-	},
-}
-
-// Mirror burrow body frames (facing left).
-var burrowBodyMirror = [][]string{
-	{
-		`    /\_/\`,
-		`   / o o \___`,
-		`  \ =-=   ___\`,
-		`  (m-m-(____/`,
-	},
-	{
-		`    /\_/\`,
-		`   / o o \___`,
-		`  \ =-=   ___\`,
-		`  (__mm(____/`,
-	},
-	{
-		`    /\_/\`,
-		`   / · · \___`,
-		`  \ =-=   ___\`,
-		`  (m__m-(___/`,
-	},
-	{
-		`    /\_/\`,
-		`   / o o \___`,
-		`  \ =-=   ___\`,
-		`  (-mm-(____/`,
-	},
-}
-
-// getBurrowFrame renders the animated mascot.
-func getBurrowFrame(animFrame int, termWidth int) string {
-	burrowWidth := 15
-	maxPos := max(termWidth-burrowWidth, 0)
-
-	cycleLength := maxPos * 2
-	if cycleLength == 0 {
-		cycleLength = 1
-	}
-	pos := animFrame % cycleLength
-	movingLeft := pos > maxPos
-	if movingLeft {
-		pos = cycleLength - pos
-	}
-
-	// Use mirror frames when moving left
-	var frames [][]string
-	if movingLeft {
-		frames = burrowBodyMirror
-	} else {
-		frames = burrowBody
-	}
-
-	bodyIdx := animFrame % len(frames)
-	body := frames[bodyIdx]
-
-	padding := strings.Repeat(" ", pos)
-	var lines []string
-
-	for _, line := range body {
-		lines = append(lines, padding+line)
-	}
-
-	return strings.Join(lines, "\n")
-}
 
 type cardData struct {
 	icon  string
@@ -130,7 +38,7 @@ type cardData struct {
 	lines []string
 }
 
-func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int, catHidden bool) (string, string) {
+func renderHeader(m MetricsSnapshot, errMsg string, termWidth int) (string, string) {
 	if termWidth <= 0 {
 		termWidth = 80
 	}
@@ -201,34 +109,22 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 		}
 	}
 
-	// Show cat unless hidden - render mascot centered below header
-	var mascot string
-	if !catHidden {
-		mascot = getBurrowFrame(animFrame, termWidth)
-	}
-
 	if errMsg != "" {
-		if mascot == "" {
-			return lipgloss.JoinVertical(lipgloss.Left, headerLine, "", dangerStyle.Render("ERROR: "+errMsg)), ""
-		}
-		return lipgloss.JoinVertical(lipgloss.Left, headerLine, "", mascot, dangerStyle.Render("ERROR: "+errMsg)), ""
+		return lipgloss.JoinVertical(lipgloss.Left, headerLine, "", dangerStyle.Render("ERROR: "+errMsg)), ""
 	}
-	if mascot == "" {
-		return headerLine, ""
-	}
-	return headerLine, mascot
+	return headerLine, ""
 }
 
 func getScoreStyle(score int) lipgloss.Style {
 	switch {
 	case score >= 90:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87FF87")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87AF87")).Bold(true)
 	case score >= 75:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87D787")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87AF87"))
 	case score >= 60:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#E0A050")).Bold(true)
 	case score >= 40:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAF5F")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#E0A050"))
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Bold(true)
 	}

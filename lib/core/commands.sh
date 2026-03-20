@@ -18,6 +18,7 @@ BURROW_COMMANDS=(
     "watch:Monitor thresholds and alert"
     "schedule:Manage scheduled maintenance"
     "hook:Setup shell integration hooks"
+    "launchers:Setup Raycast and Alfred commands"
     "completion:Setup shell tab completion"
     "update:Update to latest version"
     "remove:Remove Burrow from system"

@@ -69,7 +69,7 @@ show_status() {
     if is_touchid_configured; then
         echo -e "${GREEN}${ICON_SUCCESS}${NC} Touch ID is enabled for sudo"
     else
-        echo -e "${YELLOW}☻${NC} Touch ID is not configured for sudo"
+        echo -e "${YELLOW}${ICON_WARNING}${NC} Touch ID is not configured for sudo"
     fi
 }
 
@@ -286,7 +286,7 @@ show_menu() {
     echo ""
     show_status
     if is_touchid_configured; then
-        echo -ne "${PURPLE}☛${NC} Press ${GREEN}Enter${NC} to disable, ${GRAY}Q${NC} to quit: "
+        echo -ne "${PURPLE}${ICON_ARROW}${NC} Press ${GREEN}Enter${NC} to disable, ${GRAY}Q${NC} to quit: "
         IFS= read -r -s -n1 key || key=""
         drain_pending_input # Clean up any escape sequence remnants
         echo ""
@@ -305,7 +305,7 @@ show_menu() {
                 ;;
         esac
     else
-        echo -ne "${PURPLE}☛${NC} Press ${GREEN}Enter${NC} to enable, ${GRAY}Q${NC} to quit: "
+        echo -ne "${PURPLE}${ICON_ARROW}${NC} Press ${GREEN}Enter${NC} to enable, ${GRAY}Q${NC} to quit: "
         IFS= read -r -s -n1 key || key=""
         drain_pending_input # Clean up any escape sequence remnants
 

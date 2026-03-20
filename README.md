@@ -320,20 +320,23 @@ See [SECURITY.md](SECURITY.md) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for de
 
 ## Quick Launchers
 
-Launch Burrow from Raycast or Alfred:
+Launch Burrow commands from Raycast or Alfred:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jimmy-jain/burrow/main/scripts/setup-quick-launchers.sh | bash
+bash scripts/setup-quick-launchers.sh
 ```
+
+Creates 5 commands: **Burrow Clean**, **Burrow Uninstall**, **Burrow Optimize**, **Burrow Analyze**, **Burrow Status**.
 
 <details>
 <summary><strong>Raycast setup</strong></summary>
 
+After running the script:
 1. Raycast Settings (Cmd + ,) → **Extensions** → **Script Commands**
-2. Click **Add Script Directory**
-3. Add: `~/Library/Application Support/Raycast/script-commands`
-4. Search "Reload Script Directories" and run it
-5. Search for `Burrow Clean`, `Burrow Status`, etc.
+2. Click **"+"** → **Add Script Directory**
+3. Press **Cmd + Shift + G** and paste: `/Users/YOUR_USERNAME/Library/Application Support/Raycast/script-commands`
+4. Search "Reload Script Directories" in Raycast and run it
+5. Search for "Burrow Clean", "Burrow Status", etc.
 
 </details>
 

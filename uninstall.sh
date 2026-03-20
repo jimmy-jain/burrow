@@ -5,13 +5,13 @@
 
 set -euo pipefail
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
+GREEN='\033[38;5;108m'
+YELLOW='\033[38;5;214m'
+RED='\033[38;5;167m'
 NC='\033[0m'
 
 ICON_SUCCESS="✓"
-ICON_ERROR="☻"
+ICON_ERROR="✗"
 ICON_LIST="›"
 ICON_ARROW="›"
 

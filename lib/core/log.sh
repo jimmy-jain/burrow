@@ -372,14 +372,17 @@ print_summary_block() {
     _tw=$(tput cols 2> /dev/null || echo 70)
     [[ "$_tw" =~ ^[0-9]+$ ]] || _tw=70
     [[ $_tw -gt 70 ]] && _tw=70
-    local divider
-    divider=$(printf '%*s' "$_tw" '' | tr ' ' '=')
+    local divider=""
+    local _i
+    for ((_i = 0; _i < _tw; _i++)); do
+        divider+="─"
+    done
 
     # Print with dividers
     echo ""
-    echo "$divider"
+    echo -e "${GRAY}${divider}${NC}"
     if [[ -n "$heading" ]]; then
-        echo -e "${BLUE}${heading}${NC}"
+        echo -e "${DIM}${heading}${NC}"
     fi
 
     # Print details
@@ -387,7 +390,7 @@ print_summary_block() {
         [[ -z "$detail" ]] && continue
         echo -e "${detail}"
     done
-    echo "$divider"
+    echo -e "${GRAY}${divider}${NC}"
 
     # If debug mode is on, remind user about the log file location
     if [[ "${BW_DEBUG:-}" == "1" ]]; then

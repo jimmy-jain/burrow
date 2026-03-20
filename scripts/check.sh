@@ -51,7 +51,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 readonly ICON_SUCCESS="✓"
-readonly ICON_ERROR="☻"
+readonly ICON_ERROR="✗"
 readonly ICON_WARNING="●"
 readonly ICON_LIST="•"
 

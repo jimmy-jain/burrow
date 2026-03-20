@@ -216,7 +216,7 @@ main() {
     if [[ ! -f "$OPERATIONS_LOG_FILE" ]] || [[ ! -s "$OPERATIONS_LOG_FILE" ]]; then
         echo "No log entries found."
         echo ""
-        echo "Operations are logged when you run commands like 'mo clean'."
+        echo "Operations are logged when you run commands like 'bw clean'."
         echo "Log file: $OPERATIONS_LOG_FILE"
         return 0
     fi

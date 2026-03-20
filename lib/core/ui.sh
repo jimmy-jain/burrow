@@ -328,19 +328,27 @@ start_inline_spinner() {
 
         (
             local stop_file="$INLINE_SPINNER_STOP_FILE"
-            local chars="|/-\\"
+            # Warm gradient: dark amber → bright orange → amber (breathing effect)
+            local -a colors=(
+                $'\033[38;5;130m' $'\033[38;5;172m' $'\033[38;5;208m'
+                $'\033[38;5;214m' $'\033[38;5;220m' $'\033[38;5;214m'
+                $'\033[38;5;208m' $'\033[38;5;172m' $'\033[38;5;130m'
+                $'\033[38;5;94m'
+            )
             local i=0
+            local color_count=${#colors[@]}
+            local reset=$'\033[0m'
 
             # Clear line on first output to prevent text remnants from previous messages
             printf "\r\033[2K" >&2 || true
 
             # Cooperative exit: check for stop file instead of relying on signals
             while [[ ! -f "$stop_file" ]]; do
-                local c="${chars:$((i % ${#chars})):1}"
+                local clr="${colors[$((i % color_count))]}"
                 # Output to stderr to avoid interfering with stdout
-                printf "\r${BURROW_SPINNER_PREFIX:-}${BLUE}%s${NC} %s" "$c" "$display_message" >&2 || break
+                printf "\r${BURROW_SPINNER_PREFIX:-}${clr}* %s${reset}" "$display_message" >&2 || break
                 i=$((i + 1))
-                /bin/sleep 0.05
+                /bin/sleep 0.12
             done
 
             # Clean up stop file before exiting
@@ -350,7 +358,7 @@ start_inline_spinner() {
         INLINE_SPINNER_PID=$!
         disown "$INLINE_SPINNER_PID" 2> /dev/null || true
     else
-        echo -n "  ${BLUE}|${NC} $display_message" >&2 || true
+        printf "  \033[38;5;214m* %s\033[0m" "$display_message" >&2 || true
     fi
 }
 

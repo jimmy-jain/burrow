@@ -5,10 +5,10 @@
 
 set -euo pipefail
 
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
+GREEN='\033[38;5;108m'
+BLUE='\033[38;5;110m'
+YELLOW='\033[38;5;214m'
+RED='\033[38;5;167m'
 NC='\033[0m'
 
 _SPINNER_PID=""
@@ -42,8 +42,8 @@ VERBOSE=1
 # Avoid readonly to prevent conflicts when sourcing common.sh later.
 ICON_SUCCESS="✓"
 ICON_ADMIN="●"
-ICON_CONFIRM="◎"
-ICON_ERROR="☻"
+ICON_CONFIRM="◇"
+ICON_ERROR="✗"
 
 log_info() { [[ ${VERBOSE} -eq 1 ]] && echo -e "${BLUE}$1${NC}"; }
 log_success() { [[ ${VERBOSE} -eq 1 ]] && echo -e "${GREEN}${ICON_SUCCESS}${NC} $1"; }

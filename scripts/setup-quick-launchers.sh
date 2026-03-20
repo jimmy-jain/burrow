@@ -15,11 +15,11 @@ ICON_WARN="!"
 ICON_ERR="✗"
 
 LAUNCHER_COMMAND_SPECS=(
-    "clean|Burrow Clean|Deep system cleanup with Burrow|Run Burrow clean"
-    "uninstall|Burrow Uninstall|Uninstall applications with Burrow|Uninstall apps via Burrow"
-    "optimize|Burrow Optimize|System health checks and optimization|System health and optimization"
-    "analyze|Burrow Analyze|Disk space analysis with Burrow|Disk space analysis"
-    "status|Burrow Status|Live system status dashboard|Live system dashboard"
+    "clean|Burrow Clean|Deep system cleanup with Burrow|Run Burrow clean|🧹"
+    "uninstall|Burrow Uninstall|Uninstall applications with Burrow|Uninstall apps via Burrow|🗑️"
+    "optimize|Burrow Optimize|System health checks and optimization|System health and optimization|⚡"
+    "analyze|Burrow Analyze|Disk space analysis with Burrow|Disk space analysis|📊"
+    "status|Burrow Status|Live system status dashboard|Live system dashboard|💻"
 )
 
 log_step() { echo -e "${BLUE}${ICON_STEP}${NC} $1"; }
@@ -53,6 +53,7 @@ write_raycast_script() {
     local description="$3"
     local bw_bin="$4"
     local subcommand="$5"
+    local icon="${6:-🛡️}"
 
     local cmd_for_applescript="${bw_bin//\\/\\\\}"
     cmd_for_applescript="${cmd_for_applescript//\"/\\\"}"
@@ -63,21 +64,12 @@ write_raycast_script() {
 # Required parameters:
 # @raycast.schemaVersion 1
 # @raycast.title ${title}
-# @raycast.mode fullOutput
+# @raycast.mode silent
 # @raycast.packageName Burrow
 # @raycast.description ${description}
 
 # Optional parameters:
-# @raycast.icon 🐹
-
-# ──────────────────────────────────────────────────────────
-# Script execution begins below
-# ──────────────────────────────────────────────────────────
-
-set -euo pipefail
-
-echo "🐹 Running ${title}..."
-echo ""
+# @raycast.icon ${icon}
 
 BW_BIN="${bw_bin}"
 BW_SUBCOMMAND="${subcommand}"
@@ -114,7 +106,7 @@ detect_launcher_app() {
         echo "\${BW_LAUNCHER_APP}"
         return
     fi
-    local candidates=(Warp Ghostty Alacritty Kitty WezTerm WindTerm Hyper iTerm2 iTerm Terminal)
+    local candidates=(Ghostty Alacritty Kitty WezTerm WindTerm Hyper iTerm2 iTerm Terminal Warp)
     local app
     for app in "\${candidates[@]}"; do
         if launcher_available "\$app"; then
@@ -208,19 +200,13 @@ APPLESCRIPT
             fi
             ;;
         Warp)
-            if launcher_available "Warp" && command -v open >/dev/null 2>&1; then
-                open -na "Warp" --args /bin/zsh -lc "\"\${BW_BIN}\" \${BW_SUBCOMMAND}"
-                return \$?
-            fi
+            # Warp doesn't support --args or AppleScript for command execution.
+            # Fall through to Terminal.app.
+            return 1
             ;;
     esac
     return 1
 }
-
-if [[ -n "\${TERM:-}" && "\${TERM}" != "dumb" ]]; then
-    "\${BW_BIN}" \${BW_SUBCOMMAND}
-    exit \$?
-fi
 
 TERM_APP="\$(detect_launcher_app)"
 
@@ -228,15 +214,12 @@ if launch_with_app "\$TERM_APP"; then
     exit 0
 fi
 
-if [[ "\$TERM_APP" != "Terminal" ]]; then
-    echo "Could not control \$TERM_APP, falling back to Terminal..."
-    if launch_with_app "Terminal"; then
-        exit 0
-    fi
+# Fallback: use Terminal.app (always available, reliable via AppleScript)
+if launch_with_app "Terminal"; then
+    exit 0
 fi
 
-echo "TERM environment variable not set and no launcher succeeded."
-echo "Run this manually:"
+echo "Could not open a terminal. Run manually:"
 echo "    \"\${BW_BIN}\" \${BW_SUBCOMMAND}"
 exit 1
 EOF
@@ -256,8 +239,9 @@ create_raycast_commands() {
     log_step "Installing Raycast commands..."
     mkdir -p "$dir"
     for entry in "${LAUNCHER_COMMAND_SPECS[@]}"; do
-        IFS="|" read -r subcommand title description alfred_subtitle <<< "$entry"
-        write_raycast_script "$dir/burrow-${subcommand}.sh" "$title" "$description" "$bw_bin" "$subcommand"
+        local icon
+        IFS="|" read -r subcommand title description alfred_subtitle icon <<< "$entry"
+        write_raycast_script "$dir/burrow-${subcommand}.sh" "$title" "$description" "$bw_bin" "$subcommand" "$icon"
     done
     log_success "Scripts ready in: $dir"
 

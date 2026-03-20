@@ -248,17 +248,18 @@ var skipExtensions = map[string]bool{
 	".hx":     true,
 }
 
-var spinnerFrames = []string{"|", "/", "-", "\\", "|", "/", "-", "\\"}
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const (
-	colorPurple     = "\033[0;35m"
-	colorPurpleBold = "\033[1;35m"
-	colorGray       = "\033[0;90m"
-	colorRed        = "\033[0;31m"
-	colorYellow     = "\033[0;33m"
-	colorGreen      = "\033[0;32m"
-	colorBlue       = "\033[0;34m"
-	colorCyan       = "\033[0;36m"
+	colorPurple     = "\033[38;5;139m"
+	colorPurpleBold = "\033[1;38;5;139m"
+	colorGray       = "\033[38;5;241m"
+	colorRed        = "\033[38;5;167m"
+	colorYellow     = "\033[38;5;214m"
+	colorGreen      = "\033[38;5;108m"
+	colorBlue       = "\033[38;5;110m"
+	colorCyan       = "\033[38;5;73m"
 	colorReset      = "\033[0m"
 	colorBold       = "\033[1m"
+	colorDim        = "\033[2m"
 )

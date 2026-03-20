@@ -52,7 +52,7 @@ _get_report_free_space() {
     fi
 }
 
-# Try to determine total reclaimable bytes from `mo clean --dry-run`.
+# Try to determine total reclaimable bytes from `bw clean --dry-run`.
 # Returns the byte count on stdout, or 0 if unavailable.
 _get_cleanup_potential() {
     local potential_bytes=0

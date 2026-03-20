@@ -20,9 +20,12 @@ source "$SCRIPT_DIR/../lib/clean/app_caches.sh"
 source "$SCRIPT_DIR/../lib/clean/hints.sh"
 source "$SCRIPT_DIR/../lib/clean/system.sh"
 source "$SCRIPT_DIR/../lib/clean/user.sh"
+source "$SCRIPT_DIR/../lib/clean/sections.sh"
+source "$SCRIPT_DIR/../lib/ui/menu_paginated.sh"
 
 SYSTEM_CLEAN=false
 DRY_RUN=false
+CLEAN_ALL=false
 PROTECT_FINDER_METADATA=false
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
 
@@ -1212,13 +1215,17 @@ handle_first_run() {
         return 0
     fi
 
-    # First run detected — force dry-run
+    # First run detected — force dry-run, then offer real cleanup
     DRY_RUN=true
     export BURROW_DRY_RUN=1
 
     start_cleanup
     hide_cursor
-    perform_cleanup
+    if [[ -t 1 ]]; then
+        perform_interactive_cleanup
+    else
+        perform_cleanup
+    fi
     show_cursor
 
     echo ""
@@ -1249,6 +1256,165 @@ handle_first_run() {
     fi
 }
 
+perform_interactive_cleanup() {
+    # Allow per-section failures without aborting the full run.
+    local had_errexit=0
+    [[ $- == *e* ]] && had_errexit=1
+    set +e
+
+    # 1. Scan all sections for sizes
+    start_inline_spinner "Scanning cleanup targets"
+    scan_all_sections
+    stop_inline_spinner
+
+    # 2. Build display items and metadata for paginated menu
+    build_selectable_sections
+    local -a selectable_ids=("${BURROW_SELECTABLE_SECTIONS[@]}")
+
+    local -a display_items=()
+    local size_meta=""
+    local preselect=""
+    local i
+
+    for ((i = 0; i < ${#selectable_ids[@]}; i++)); do
+        local id="${selectable_ids[i]}"
+        local label
+        label=$(get_section_label "$id")
+        local kb="${CLEAN_SECTION_SIZES[i]:-0}"
+        local size_str=""
+
+        if [[ $kb -gt 0 ]]; then
+            size_str=$(bytes_to_human_kb "$kb")
+        fi
+
+        # Format: "Label                    Size" (padded to 40 chars)
+        if [[ -n "$size_str" ]]; then
+            display_items+=("$(printf '%-35s %s' "$label" "$size_str")")
+        else
+            display_items+=("$(printf '%-35s' "$label")")
+        fi
+
+        # Build size metadata (comma-separated KB values)
+        [[ -n "$size_meta" ]] && size_meta+=","
+        size_meta+="$kb"
+
+        # Pre-select all
+        [[ -n "$preselect" ]] && preselect+=","
+        preselect+="$i"
+    done
+
+    if [[ ${#display_items[@]} -eq 0 ]]; then
+        echo "No cleanup sections available."
+        return 0
+    fi
+
+    # 3. Show interactive menu
+    export BURROW_PRESELECTED_INDICES="$preselect"
+    export BURROW_MENU_META_SIZEKB="$size_meta"
+    export BURROW_MENU_SORT_MODE="size"
+
+    paginated_multi_select "Select cleanup categories" "${display_items[@]}"
+
+    # 4. Parse selection result
+    if [[ -z "${BURROW_SELECTION_RESULT:-}" ]]; then
+        echo ""
+        echo -e "${GRAY}No categories selected. Nothing to clean.${NC}"
+        return 0
+    fi
+
+    local -a selected_indices=()
+    IFS=',' read -ra selected_indices <<< "$BURROW_SELECTION_RESULT"
+
+    # Map indices to section IDs
+    local -a selected_ids=()
+    for i in "${selected_indices[@]}"; do
+        if [[ "$i" =~ ^[0-9]+$ && $i -lt ${#selectable_ids[@]} ]]; then
+            selected_ids+=("${selectable_ids[i]}")
+        fi
+    done
+
+    if [[ ${#selected_ids[@]} -eq 0 ]]; then
+        echo ""
+        echo -e "${GRAY}No categories selected. Nothing to clean.${NC}"
+        return 0
+    fi
+
+    # 5. Show header
+    echo -e "${BLUE}${ICON_ADMIN}${NC} $(detect_architecture) | Free space: $(get_free_space)"
+
+    if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
+        local custom_count=0
+        local predefined_count=0
+        for pattern in "${WHITELIST_PATTERNS[@]}"; do
+            local is_predefined=false
+            for default in "${DEFAULT_WHITELIST_PATTERNS[@]}"; do
+                local expanded_default="${default/#\~/$HOME}"
+                [[ "$pattern" == "$expanded_default" ]] && is_predefined=true && break
+            done
+            if [[ "$is_predefined" == "true" ]]; then
+                predefined_count=$((predefined_count + 1))
+            else
+                custom_count=$((custom_count + 1))
+            fi
+        done
+        if [[ $custom_count -gt 0 || $predefined_count -gt 0 ]]; then
+            local summary=""
+            [[ $predefined_count -gt 0 ]] && summary+="$predefined_count core"
+            [[ $custom_count -gt 0 && $predefined_count -gt 0 ]] && summary+=" + "
+            [[ $custom_count -gt 0 ]] && summary+="$custom_count custom"
+            summary+=" patterns active"
+            echo -e "${BLUE}${ICON_SUCCESS}${NC} Whitelist: $summary"
+        fi
+    fi
+
+    if [[ ${#WHITELIST_WARNINGS[@]} -gt 0 ]]; then
+        echo ""
+        for warning in "${WHITELIST_WARNINGS[@]}"; do
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Whitelist: $warning"
+        done
+    fi
+
+    # 6. Execute selected sections
+    total_items=0
+    files_cleaned=0
+    total_size_cleaned=0
+
+    execute_selected_sections "${selected_ids[@]}"
+
+    # 7. Summary
+    echo ""
+    local summary_heading=""
+    local summary_status="success"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        summary_heading="Dry run complete - no changes made"
+    else
+        summary_heading="Cleanup complete"
+    fi
+
+    local -a summary_details=()
+    if [[ $total_size_cleaned -gt 0 ]]; then
+        local freed_size_human
+        freed_size_human=$(bytes_to_human_kb "$total_size_cleaned")
+        if [[ "$DRY_RUN" == "true" ]]; then
+            summary_details+=("Potential space: ${GREEN}${freed_size_human}${NC}")
+        else
+            local summary_line="Space freed: ${GREEN}${freed_size_human}${NC}"
+            [[ $files_cleaned -gt 0 ]] && summary_line+=" | Items: $files_cleaned"
+            summary_details+=("$summary_line")
+            summary_details+=("Free space now: $(get_free_space)")
+        fi
+    else
+        summary_details+=("System already clean.")
+        summary_details+=("Free space: $(get_free_space)")
+    fi
+
+    [[ $had_errexit -eq 1 ]] && set -e
+
+    log_operation_session_end "clean" "$files_cleaned" "$total_size_cleaned"
+    print_summary_block "$summary_heading" "${summary_details[@]}"
+    printf '\n'
+}
+
 main() {
     for arg in "$@"; do
         case "$arg" in
@@ -1263,6 +1429,9 @@ main() {
                 DRY_RUN=true
                 export BURROW_DRY_RUN=1
                 ;;
+            "--all" | "-a")
+                CLEAN_ALL=true
+                ;;
             "--whitelist")
                 source "$SCRIPT_DIR/../lib/manage/whitelist.sh"
                 manage_whitelist "clean"
@@ -1275,9 +1444,16 @@ main() {
 
     if handle_first_run; then
         start_cleanup
-        hide_cursor
-        perform_cleanup
-        show_cursor
+
+        if [[ "$CLEAN_ALL" == "true" ]] || [[ ! -t 1 ]]; then
+            # Legacy behavior: run all sections
+            hide_cursor
+            perform_cleanup
+            show_cursor
+        else
+            # Interactive selection (new default)
+            perform_interactive_cleanup
+        fi
     fi
     exit 0
 }

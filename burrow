@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/lib/core/commands.sh"
 trap cleanup_temp_files EXIT INT TERM
 
 # Version and update helpers
-VERSION="0.1.0"
+VERSION="0.2.0"
 BURROW_TAGLINE="macOS System Maintenance CLI"
 
 # Migrate legacy Mole configuration on first run
@@ -297,7 +297,7 @@ show_help() {
     show_brand_banner
     echo
     printf "%s%s%s\n" "$BLUE" "COMMANDS" "$NC"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo" "$NC" "Main menu"
+    printf "  %s%-28s%s %s\n" "$GREEN" "bw" "$NC" "Main menu"
     for entry in "${BURROW_COMMANDS[@]}"; do
         local name="${entry%%:*}"
         local desc="${entry#*:}"
@@ -346,7 +346,7 @@ update_burrow() {
         if [[ "$nightly_update" == "true" ]]; then
             log_error "Nightly update is only available for script installations"
             echo -e "${ICON_REVIEW} Homebrew installs follow stable releases."
-            echo -e "${ICON_REVIEW} Reinstall via script to use: ${GRAY}mo update --nightly${NC}"
+            echo -e "${ICON_REVIEW} Reinstall via script to use: ${GRAY}bw update --nightly${NC}"
             exit 1
         fi
         update_via_homebrew "$VERSION"
@@ -370,7 +370,7 @@ update_burrow() {
         if [[ -z "$latest" ]]; then
             log_error "Unable to check for updates. Check network connection."
             echo -e "${ICON_REVIEW} Check if you can access GitHub, https://github.com"
-            echo -e "${ICON_REVIEW} Try again with: ${GRAY}mo update${NC}"
+            echo -e "${ICON_REVIEW} Try again with: ${GRAY}bw update${NC}"
             exit 1
         fi
 
@@ -488,6 +488,15 @@ update_burrow() {
             printf '\n%s\n\n' "${GREEN}${ICON_SUCCESS}${NC} Updated to ${success_label}, ${new_version:-unknown}"
         else
             printf '\n'
+        fi
+
+        # Auto-update launcher scripts if installed
+        if [[ -d "$HOME/Library/Application Support/Raycast/script-commands" ]] && \
+           [[ -f "$SCRIPT_DIR/bin/launchers.sh" ]]; then
+            source "$SCRIPT_DIR/bin/launchers.sh"
+            if launcher_auto_update 2>/dev/null; then
+                printf '%s\n' "  ${GREEN}${ICON_SUCCESS}${NC} Raycast launchers updated"
+            fi
         fi
     }
 
@@ -1002,6 +1011,9 @@ main() {
             ;;
         "hook")
             exec "$SCRIPT_DIR/bin/hook.sh" "${args[@]:1}"
+            ;;
+        "launchers")
+            exec "$SCRIPT_DIR/bin/launchers.sh" "${args[@]:1}"
             ;;
         "update")
             local force_update=false

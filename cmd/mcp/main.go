@@ -11,7 +11,7 @@ import (
 
 const (
 	serverName    = "burrow"
-	serverVersion = "0.1.0"
+	serverVersion = "0.2.0"
 )
 
 func main() {

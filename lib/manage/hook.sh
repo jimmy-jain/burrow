@@ -81,7 +81,7 @@ _hook_install() {
     if command -v burrow > /dev/null 2>&1; then
         hook_name="burrow"
     elif command -v bw > /dev/null 2>&1; then
-        hook_name="mo"
+        hook_name="bw"
     fi
 
     if [[ -z "$hook_name" ]]; then

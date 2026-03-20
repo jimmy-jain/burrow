@@ -14,34 +14,36 @@ readonly BURROW_BASE_LOADED=1
 # Color Definitions
 # ============================================================================
 readonly ESC=$'\033'
-readonly GREEN="${ESC}[0;32m"
-readonly BLUE="${ESC}[1;34m"
-readonly CYAN="${ESC}[0;36m"
-readonly YELLOW="${ESC}[0;33m"
-readonly PURPLE="${ESC}[0;35m"
-readonly PURPLE_BOLD="${ESC}[1;35m"
-readonly RED="${ESC}[0;31m"
-readonly GRAY="${ESC}[0;90m"
+readonly GREEN="${ESC}[38;5;108m"
+readonly BLUE="${ESC}[38;5;110m"
+readonly CYAN="${ESC}[38;5;73m"
+readonly YELLOW="${ESC}[38;5;214m"
+readonly PURPLE="${ESC}[38;5;139m"
+readonly PURPLE_BOLD="${ESC}[1;38;5;139m"
+readonly RED="${ESC}[38;5;167m"
+readonly GRAY="${ESC}[38;5;241m"
+readonly DIM="${ESC}[2m"
+readonly BOLD="${ESC}[1m"
 readonly NC="${ESC}[0m"
 
 # ============================================================================
 # Icon Definitions
 # ============================================================================
-readonly ICON_CONFIRM="◎"
-readonly ICON_ADMIN="⚙"
+readonly ICON_CONFIRM="◇"
+readonly ICON_ADMIN="●"
 readonly ICON_SUCCESS="✓"
-readonly ICON_ERROR="☻"
-readonly ICON_WARNING="◎"
+readonly ICON_ERROR="✗"
+readonly ICON_WARNING="○"
 readonly ICON_EMPTY="○"
 readonly ICON_SOLID="●"
-readonly ICON_LIST="•"
+readonly ICON_LIST="·"
 readonly ICON_SUBLIST="↳"
-readonly ICON_ARROW="➤"
-readonly ICON_DRY_RUN="→"
-readonly ICON_REVIEW="☞"
+readonly ICON_ARROW="◆"
+readonly ICON_DRY_RUN="▪"
+readonly ICON_REVIEW="›"
 readonly ICON_NAV_UP="↑"
 readonly ICON_NAV_DOWN="↓"
-readonly ICON_INFO="ℹ"
+readonly ICON_INFO="›"
 
 # ============================================================================
 # LaunchServices Utility
@@ -633,14 +635,14 @@ start_section() {
     TRACK_SECTION=1
     SECTION_ACTIVITY=0
     echo ""
-    echo -e "${PURPLE_BOLD}${ICON_ARROW} $1${NC}"
+    echo -e "${BOLD}${ICON_ARROW} $1${NC}"
 }
 
 # End a section
-# Shows "Nothing to tidy" if no activity was recorded
+# Shows "Nothing to clean" if no activity was recorded
 end_section() {
     if [[ "${TRACK_SECTION:-0}" == "1" && "${SECTION_ACTIVITY:-0}" == "0" ]]; then
-        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Nothing to tidy"
+        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Nothing to clean"
     fi
     TRACK_SECTION=0
 }
