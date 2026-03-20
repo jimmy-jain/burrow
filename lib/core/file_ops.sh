@@ -317,6 +317,12 @@ safe_remove_symlink() {
 safe_sudo_remove() {
     local path="$1"
 
+    # Bail early if no sudo session — avoids repeated password prompts.
+    if ! has_sudo_session; then
+        debug_log "No sudo session, skipping: $path"
+        return 1
+    fi
+
     if ! validate_path_for_deletion "$path"; then
         log_error "Path validation failed for sudo remove: $path"
         return 1
@@ -465,6 +471,12 @@ safe_sudo_find_delete() {
     local pattern="$2"
     local age_days="${3:-7}"
     local type_filter="${4:-f}"
+
+    # Bail early if no sudo session — avoids repeated password prompts.
+    if ! has_sudo_session; then
+        debug_log "No sudo session, skipping find-delete in: $base_dir"
+        return 0
+    fi
 
     # Validate base directory (use sudo for permission-restricted dirs)
     if ! sudo test -d "$base_dir" 2> /dev/null; then
