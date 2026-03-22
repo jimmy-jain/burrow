@@ -488,6 +488,15 @@ build_binary_from_source() {
         status)
             cmd_dir="cmd/status"
             ;;
+        dupes)
+            cmd_dir="cmd/dupes"
+            ;;
+        watch)
+            cmd_dir="cmd/watch"
+            ;;
+        mcp)
+            cmd_dir="cmd/mcp"
+            ;;
         *)
             return 1
             ;;
@@ -522,6 +531,16 @@ build_binary_from_source() {
 download_binary() {
     local binary_name="$1"
     local target_path="$CONFIG_DIR/bin/${binary_name}-go"
+    local local_name="${binary_name}-go"
+    local remote_name="${binary_name}"
+
+    # MCP binary uses burrow-mcp naming convention
+    if [[ "$binary_name" == "mcp" ]]; then
+        target_path="$CONFIG_DIR/bin/burrow-mcp"
+        local_name="burrow-mcp"
+        remote_name="burrow-mcp"
+    fi
+
     local arch
     arch=$(uname -m)
     local arch_suffix="amd64"
@@ -529,13 +548,13 @@ download_binary() {
         arch_suffix="arm64"
     fi
 
-    if [[ -f "$SOURCE_DIR/bin/${binary_name}-go" ]]; then
-        command cp -f "$SOURCE_DIR/bin/${binary_name}-go" "$target_path"
+    if [[ -f "$SOURCE_DIR/bin/${local_name}" ]]; then
+        command cp -f "$SOURCE_DIR/bin/${local_name}" "$target_path"
         chmod +x "$target_path"
         log_success "Installed local ${binary_name} binary"
         return 0
-    elif [[ -f "$SOURCE_DIR/bin/${binary_name}-darwin-${arch_suffix}" ]]; then
-        command cp -f "$SOURCE_DIR/bin/${binary_name}-darwin-${arch_suffix}" "$target_path"
+    elif [[ -f "$SOURCE_DIR/bin/${remote_name}-darwin-${arch_suffix}" ]]; then
+        command cp -f "$SOURCE_DIR/bin/${remote_name}-darwin-${arch_suffix}" "$target_path"
         chmod +x "$target_path"
         log_success "Installed local ${binary_name} binary"
         return 0
@@ -556,7 +575,7 @@ download_binary() {
         fi
         return 1
     fi
-    local url="https://github.com/jimmy-jain/burrow/releases/download/V${version}/${binary_name}-darwin-${arch_suffix}"
+    local url="https://github.com/jimmy-jain/burrow/releases/download/V${version}/${remote_name}-darwin-${arch_suffix}"
 
     # Skip preflight network checks to avoid false negatives.
 
@@ -669,6 +688,15 @@ install_files() {
         exit 1
     fi
     if ! download_binary "status"; then
+        exit 1
+    fi
+    if ! download_binary "dupes"; then
+        exit 1
+    fi
+    if ! download_binary "watch"; then
+        exit 1
+    fi
+    if ! download_binary "mcp"; then
         exit 1
     fi
 }
