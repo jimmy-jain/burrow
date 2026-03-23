@@ -15,7 +15,7 @@ func run() error {
 	conserveDir := flag.String("conserve", "", "move duplicates to conserve directory")
 	restoreDir := flag.String("restore", "", "restore conserved files from manifest")
 	filterFile := flag.String("file", "", "restore a single file (use with --restore)")
-	minSizeStr := flag.String("min-size", "1KB", "skip files under this size (e.g., 1KB, 1MB, 1GB)")
+	minSizeStr := flag.String("min-size", "100KB", "skip files under this size (e.g., 100KB, 1MB, 1GB)")
 	jsonOutput := flag.Bool("json", false, "machine-readable JSON output")
 	help := flag.Bool("help", false, "show help")
 	flag.Usage = usage
