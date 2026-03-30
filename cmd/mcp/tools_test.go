@@ -162,6 +162,7 @@ func TestResolveBinaryMissing(t *testing.T) {
 	// Point to a nonexistent path and ensure PATH lookup also fails.
 	t.Setenv(envBurrowPath, "/nonexistent/burrow")
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv(envBurrowFallbackPath, "/nonexistent/fallback")
 
 	_, err := NewExecutor()
 	if err == nil {

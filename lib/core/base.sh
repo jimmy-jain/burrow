@@ -207,14 +207,30 @@ detect_architecture() {
     echo "$BURROW_ARCH_CACHE"
 }
 
-# Get free disk space on root volume
-# Returns: human-readable string (e.g., "100G")
+# Get free disk space on root volume.
+# Uses diskutil to report non-purgeable free space so that cleanup is
+# reflected accurately. APFS purgeable files are already counted as
+# "Available" by df, so df doesn't change after cleaning cache files.
+# Falls back to df -h if diskutil is unavailable.
+# Returns: human-readable string (e.g., "423.8 GB")
 get_free_space() {
+    if command -v diskutil > /dev/null 2>&1; then
+        local target="/"
+        if [[ -d "/System/Volumes/Data" ]]; then
+            target="/System/Volumes/Data"
+        fi
+        local free_str
+        free_str=$(diskutil info "$target" 2> /dev/null | awk '/Free Space:/ {print $4 " " $5}')
+        if [[ -n "$free_str" ]]; then
+            echo "$free_str"
+            return 0
+        fi
+    fi
+    # Fallback: df -h Available (includes purgeable)
     local target="/"
     if [[ -d "/System/Volumes/Data" ]]; then
         target="/System/Volumes/Data"
     fi
-
     df -h "$target" | awk 'NR==2 {print $4}'
 }
 

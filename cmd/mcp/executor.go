@@ -24,6 +24,9 @@ const (
 
 	// envBurrowPath is the environment variable for overriding the binary path.
 	envBurrowPath = "BURROW_PATH"
+
+	// envBurrowFallbackPath overrides the hardcoded fallback path (used in tests).
+	envBurrowFallbackPath = "BURROW_FALLBACK_PATH"
 )
 
 // ErrNotConfirmed is returned when a destructive tool is called without
@@ -66,9 +69,13 @@ func resolveBinary() (string, error) {
 		return pathBin, nil
 	}
 
-	// 3. Fall back to well-known location.
-	if _, err := os.Stat(fallbackPath); err == nil {
-		return fallbackPath, nil
+	// 3. Fall back to well-known location (overridable via BURROW_FALLBACK_PATH).
+	fp := fallbackPath
+	if envFallback := os.Getenv(envBurrowFallbackPath); envFallback != "" {
+		fp = envFallback
+	}
+	if _, err := os.Stat(fp); err == nil {
+		return fp, nil
 	}
 
 	return "", fmt.Errorf(
