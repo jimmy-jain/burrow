@@ -234,14 +234,15 @@ clean_deep_system() {
     fi
     return 0
 }
-# Incomplete Time Machine backups.
+# Scan for incomplete Time Machine backups — scan only, never deletes.
+# Reports found items and shows the tmutil delete command for the user to run manually.
 clean_time_machine_failed_backups() {
-    local tm_cleaned=0
+    local tm_found=0
     if ! command -v tmutil > /dev/null 2>&1; then
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
         return 0
     fi
-    # Fast pre-check: skip entirely if Time Machine is not configured (no tmutil needed)
+    # Fast pre-check: skip entirely if Time Machine is not configured
     if ! defaults read /Library/Preferences/com.apple.TimeMachine AutoBackup 2> /dev/null | grep -qE '^[01]$'; then
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
         return 0
@@ -251,29 +252,21 @@ clean_time_machine_failed_backups() {
     local tm_info
     tm_info=$(run_with_timeout 2 tmutil destinationinfo 2>&1 || echo "failed")
     if [[ "$tm_info" == *"No destinations configured"* || "$tm_info" == "failed" ]]; then
-        if [[ "$spinner_active" == "true" ]]; then
-            stop_section_spinner
-        fi
+        stop_section_spinner
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
         return 0
     fi
     if [[ ! -d "/Volumes" ]]; then
-        if [[ "$spinner_active" == "true" ]]; then
-            stop_section_spinner
-        fi
+        stop_section_spinner
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
         return 0
     fi
     if tm_is_running; then
-        if [[ "$spinner_active" == "true" ]]; then
-            stop_section_spinner
-        fi
-        echo -e "  ${YELLOW}!${NC} Time Machine backup in progress, skipping cleanup"
+        stop_section_spinner
+        echo -e "  ${YELLOW}!${NC} Time Machine backup in progress, skipping check"
         return 0
     fi
-    if [[ "$spinner_active" == "true" ]]; then
-        start_section_spinner "Checking backup volumes..."
-    fi
+    start_section_spinner "Checking backup volumes..."
     # Fast pre-scan for backup volumes to avoid slow tmutil checks.
     local -a backup_volumes=()
     for volume in /Volumes/*; do
@@ -285,15 +278,11 @@ clean_time_machine_failed_backups() {
         fi
     done
     if [[ ${#backup_volumes[@]} -eq 0 ]]; then
-        if [[ "$spinner_active" == "true" ]]; then
-            stop_section_spinner
-        fi
+        stop_section_spinner
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
         return 0
     fi
-    if [[ "$spinner_active" == "true" ]]; then
-        start_section_spinner "Scanning backup volumes..."
-    fi
+    start_section_spinner "Scanning backup volumes..."
     for volume in "${backup_volumes[@]}"; do
         local fs_type
         fs_type=$(run_with_timeout 1 command df -T "$volume" 2> /dev/null | tail -1 | awk '{print $2}' || echo "unknown")
@@ -304,7 +293,6 @@ clean_time_machine_failed_backups() {
         if [[ -d "$backupdb_dir" ]]; then
             while IFS= read -r inprogress_file; do
                 [[ -d "$inprogress_file" ]] || continue
-                # Only delete old incomplete backups (safety window).
                 local file_mtime
                 file_mtime=$(get_file_mtime "$inprogress_file")
                 local current_time
@@ -320,30 +308,13 @@ clean_time_machine_failed_backups() {
                     stop_section_spinner
                     spinner_active=false
                 fi
-                local backup_name
+                local backup_name size_human
                 backup_name=$(basename "$inprogress_file")
-                local size_human
                 size_human=$(bytes_to_human "$((size_kb * 1024))")
-                if [[ "$DRY_RUN" == "true" ]]; then
-                    echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Incomplete backup: $backup_name${NC}, ${YELLOW}$size_human dry${NC}"
-                    tm_cleaned=$((tm_cleaned + 1))
-                    note_activity
-                    continue
-                fi
-                if ! command -v tmutil > /dev/null 2>&1; then
-                    echo -e "  ${YELLOW}!${NC} tmutil not available, skipping: $backup_name"
-                    continue
-                fi
-                if tmutil delete "$inprogress_file" 2> /dev/null; then
-                    echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Incomplete backup: $backup_name${NC}, ${GREEN}$size_human${NC}"
-                    tm_cleaned=$((tm_cleaned + 1))
-                    files_cleaned=$((files_cleaned + 1))
-                    total_size_cleaned=$((total_size_cleaned + size_kb))
-                    total_items=$((total_items + 1))
-                    note_activity
-                else
-                    echo -e "  ${YELLOW}!${NC} Could not delete: $backup_name · try manually with sudo"
-                fi
+                echo -e "  ${YELLOW}${ICON_WARNING}${NC} Incomplete backup: ${backup_name}, ${YELLOW}${size_human}${NC}"
+                echo -e "  ${GRAY}${ICON_REVIEW}${NC} ${GRAY}Review: sudo tmutil delete \"${inprogress_file}\"${NC}"
+                tm_found=$((tm_found + 1))
+                note_activity
             done < <(run_with_timeout 15 find "$backupdb_dir" -maxdepth 3 -type d \( -name "*.inProgress" -o -name "*.inprogress" \) 2> /dev/null || true)
         fi
         # APFS bundles.
@@ -372,29 +343,13 @@ clean_time_machine_failed_backups() {
                         stop_section_spinner
                         spinner_active=false
                     fi
-                    local backup_name
+                    local backup_name size_human
                     backup_name=$(basename "$inprogress_file")
-                    local size_human
                     size_human=$(bytes_to_human "$((size_kb * 1024))")
-                    if [[ "$DRY_RUN" == "true" ]]; then
-                        echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Incomplete APFS backup in $bundle_name: $backup_name${NC}, ${YELLOW}$size_human dry${NC}"
-                        tm_cleaned=$((tm_cleaned + 1))
-                        note_activity
-                        continue
-                    fi
-                    if ! command -v tmutil > /dev/null 2>&1; then
-                        continue
-                    fi
-                    if tmutil delete "$inprogress_file" 2> /dev/null; then
-                        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Incomplete APFS backup in $bundle_name: $backup_name${NC}, ${GREEN}$size_human${NC}"
-                        tm_cleaned=$((tm_cleaned + 1))
-                        files_cleaned=$((files_cleaned + 1))
-                        total_size_cleaned=$((total_size_cleaned + size_kb))
-                        total_items=$((total_items + 1))
-                        note_activity
-                    else
-                        echo -e "  ${YELLOW}!${NC} Could not delete from bundle: $backup_name"
-                    fi
+                    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Incomplete backup in ${bundle_name}: ${backup_name}, ${YELLOW}${size_human}${NC}"
+                    echo -e "  ${GRAY}${ICON_REVIEW}${NC} ${GRAY}Review: sudo tmutil delete \"${inprogress_file}\"${NC}"
+                    tm_found=$((tm_found + 1))
+                    note_activity
                 done < <(run_with_timeout 15 find "$mounted_path" -maxdepth 3 -type d \( -name "*.inProgress" -o -name "*.inprogress" \) 2> /dev/null || true)
             fi
         done
@@ -402,7 +357,7 @@ clean_time_machine_failed_backups() {
     if [[ "$spinner_active" == "true" ]]; then
         stop_section_spinner
     fi
-    if [[ $tm_cleaned -eq 0 ]]; then
+    if [[ $tm_found -eq 0 ]]; then
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} No incomplete backups found"
     fi
 }

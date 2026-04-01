@@ -1,0 +1,8 @@
+{
+  "name": "burrow",
+  "description": "macOS system maintenance CLI — clean caches, analyze disk usage, find duplicates, monitor system health, and optimize your Mac from Claude Code",
+  "author": {
+    "name": "Jimmy Jain",
+    "url": "https://github.com/jimmy-jain/burrow"
+  }
+}
