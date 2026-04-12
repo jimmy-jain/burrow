@@ -792,6 +792,137 @@ opt_dock_refresh() {
     opt_msg "Dock refreshed"
 }
 
+# Quarantine database cleanup.
+opt_quarantine_cleanup() {
+    local qtn_db="$HOME/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2"
+
+    if [[ "${BURROW_DRY_RUN:-0}" == "1" ]]; then
+        opt_msg "Quarantine database · would clean"
+        return 0
+    fi
+
+    if [[ ! -f "$qtn_db" ]]; then
+        return 0
+    fi
+
+    local db_size
+    db_size=$(get_file_size "$qtn_db" 2> /dev/null || echo "0")
+
+    if ! command -v sqlite3 > /dev/null 2>&1; then
+        echo -e "  ${GRAY}-${NC} Quarantine cleanup skipped (sqlite3 unavailable)"
+        return 0
+    fi
+
+    local sql_ok=0
+    sqlite3 "$qtn_db" "DELETE FROM LSQuarantineEvent; VACUUM;" 2> /dev/null || sql_ok=$?
+    if [[ $sql_ok -eq 0 ]]; then
+        opt_msg "Quarantine database cleaned (was $(bytes_to_human "$db_size"))"
+    else
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Quarantine cleanup skipped (database busy or locked)"
+    fi
+}
+
+# Launch agents cleanup (user-level stale agents).
+opt_launch_agents_cleanup() {
+    local agents_dir="$HOME/Library/LaunchAgents"
+
+    if [[ "${BURROW_DRY_RUN:-0}" == "1" ]]; then
+        opt_msg "Launch agents · would scan for stale entries"
+        return 0
+    fi
+
+    if [[ ! -d "$agents_dir" ]]; then
+        return 0
+    fi
+
+    local removed=0
+    while IFS= read -r plist; do
+        [[ ! -f "$plist" ]] && continue
+        # Skip burrow's own plist
+        [[ "$plist" == *"dev.burrow"* ]] && continue
+        # Check if the plist references an executable that no longer exists
+        local exec_path
+        exec_path=$(defaults read "$plist" ProgramArguments 2> /dev/null | awk 'NR==2{gsub(/[[:space:]]*"/, ""); gsub(/,/, ""); print; exit}' || true)
+        if [[ -n "$exec_path" && "$exec_path" == /* && ! -e "$exec_path" ]]; then
+            launchctl unload "$plist" 2> /dev/null || true
+            safe_remove "$plist" true > /dev/null 2>&1 && removed=$((removed + 1))
+        fi
+    done < <(command find "$agents_dir" -name "*.plist" -maxdepth 1 -type f 2> /dev/null || true)
+
+    if [[ $removed -gt 0 ]]; then
+        opt_msg "Removed ${removed} stale launch agent(s)"
+    else
+        opt_msg "Launch agents verified (no stale entries)"
+    fi
+}
+
+# Notification Center database cleanup.
+opt_notification_cleanup() {
+    local nc_db
+    nc_db=$(command find "$HOME/Library/Application Support/NotificationCenter" \
+        -name "*.db" -maxdepth 1 2> /dev/null | head -1 || true)
+
+    if [[ "${BURROW_DRY_RUN:-0}" == "1" ]]; then
+        opt_msg "Notification Center database · would clean"
+        return 0
+    fi
+
+    if [[ -z "$nc_db" || ! -f "$nc_db" ]]; then
+        return 0
+    fi
+
+    if ! command -v sqlite3 > /dev/null 2>&1; then
+        echo -e "  ${GRAY}-${NC} Notification Center cleanup skipped (sqlite3 unavailable)"
+        return 0
+    fi
+
+    local db_size
+    db_size=$(get_file_size "$nc_db" 2> /dev/null || echo "0")
+
+    local sql_ok=0
+    sqlite3 "$nc_db" \
+        "DELETE FROM record WHERE delivered_date < strftime('%s','now','-30 days'); VACUUM;" \
+        2> /dev/null || sql_ok=$?
+    if [[ $sql_ok -eq 0 ]]; then
+        killall NotificationCenter 2> /dev/null || true
+        opt_msg "Notification Center database cleaned (was $(bytes_to_human "$((db_size * 1024))"))"
+    else
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Notification Center cleanup skipped (database busy or locked)"
+    fi
+}
+
+# CoreDuet / Knowledge database cleanup.
+opt_coreduet_cleanup() {
+    local knowledge_db="$HOME/Library/Application Support/Knowledge/knowledgeC.db"
+
+    if [[ "${BURROW_DRY_RUN:-0}" == "1" ]]; then
+        opt_msg "Knowledge database · would clean"
+        return 0
+    fi
+
+    if [[ ! -f "$knowledge_db" ]]; then
+        return 0
+    fi
+
+    if ! command -v sqlite3 > /dev/null 2>&1; then
+        echo -e "  ${GRAY}-${NC} Knowledge database cleanup skipped (sqlite3 unavailable)"
+        return 0
+    fi
+
+    local total_size
+    total_size=$(get_file_size "$knowledge_db" 2> /dev/null || echo "0")
+
+    local sql_ok=0
+    sqlite3 "$knowledge_db" \
+        "DELETE FROM ZOBJECT WHERE ZCREATIONDATE < (strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); VACUUM;" \
+        2> /dev/null || sql_ok=$?
+    if [[ $sql_ok -eq 0 ]]; then
+        opt_msg "Knowledge database cleaned (was $(bytes_to_human "$((total_size * 1024))"))"
+    else
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Knowledge database cleanup skipped (database busy or locked)"
+    fi
+}
+
 # Dispatch optimization by action name.
 execute_optimization() {
     local action="$1"
@@ -812,6 +943,10 @@ execute_optimization() {
         disk_permissions_repair) opt_disk_permissions_repair ;;
         bluetooth_reset) opt_bluetooth_reset ;;
         spotlight_index_optimize) opt_spotlight_index_optimize ;;
+        quarantine_cleanup) opt_quarantine_cleanup ;;
+        launch_agents_cleanup) opt_launch_agents_cleanup ;;
+        notification_cleanup) opt_notification_cleanup ;;
+        coreduet_cleanup) opt_coreduet_cleanup ;;
         *)
             echo -e "${YELLOW}${ICON_ERROR}${NC} Unknown action: $action"
             return 1

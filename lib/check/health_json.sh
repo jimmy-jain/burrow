@@ -143,6 +143,12 @@ EOF
     items+=('bluetooth_reset|Bluetooth Refresh|Restart Bluetooth module to fix connectivity (skips if in use)|true')
     items+=('spotlight_index_optimize|Spotlight Optimization|Rebuild index if search is slow (smart detection)|true')
 
+    # Optional destructive tasks (require explicit confirmation at runtime)
+    items+=('quarantine_cleanup|Quarantine DB Cleanup|Remove old quarantine event records (recoverable)|false')
+    items+=('launch_agents_cleanup|Stale Launch Agents|Remove user launch agents pointing to missing executables|false')
+    items+=('notification_cleanup|Notification Center Cleanup|Delete notification records older than 30 days|false')
+    items+=('coreduet_cleanup|Knowledge DB Cleanup|Remove CoreDuet activity records older than 90 days|false')
+
     # Removed high-risk optimizations:
     # - startup_items_cleanup: Risk of deleting legitimate app helpers
     # - system_services_refresh: Risk of data loss when killing system services

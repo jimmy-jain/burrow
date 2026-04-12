@@ -2,10 +2,25 @@
 # Developer Tools Cleanup Module
 set -euo pipefail
 
-# Tool cache helper (respects DRY_RUN).
+# Tool cache helper (respects DRY_RUN and whitelist).
+# Args:
+#   $1 = description (display name)
+#   $2 = cache path to check against whitelist (empty string to skip check)
+#   $3+ = command to run
 clean_tool_cache() {
     local description="$1"
-    shift
+    local cache_path="$2"
+    shift 2
+
+    if [[ -n "$cache_path" ]] && is_path_whitelisted "$cache_path"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $description · would skip (whitelist)"
+        else
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $description · skipped (whitelist)"
+        fi
+        return 0
+    fi
+
     if [[ "$DRY_RUN" != "true" ]]; then
         local command_succeeded=false
         if [[ -t 1 ]]; then
@@ -31,8 +46,6 @@ clean_dev_npm() {
     local npm_cache_path="$npm_default_cache"
 
     if command -v npm > /dev/null 2>&1; then
-        clean_tool_cache "npm cache" npm cache clean --force
-
         start_section_spinner "Checking npm cache path..."
         npm_cache_path=$(run_with_timeout 2 npm config get cache 2> /dev/null) || npm_cache_path=""
         stop_section_spinner
@@ -40,6 +53,8 @@ clean_dev_npm() {
         if [[ -z "$npm_cache_path" || "$npm_cache_path" != /* ]]; then
             npm_cache_path="$npm_default_cache"
         fi
+
+        clean_tool_cache "npm cache" "$npm_cache_path" npm cache clean --force
 
         note_activity
     fi
@@ -75,11 +90,11 @@ clean_dev_npm() {
     local pnpm_default_store=~/Library/pnpm/store
     # Check if pnpm is actually usable (not just Corepack shim)
     if command -v pnpm > /dev/null 2>&1 && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version > /dev/null 2>&1; then
-        COREPACK_ENABLE_DOWNLOAD_PROMPT=0 clean_tool_cache "pnpm cache" pnpm store prune
         local pnpm_store_path
         start_section_spinner "Checking store path..."
         pnpm_store_path=$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 run_with_timeout 2 pnpm store path 2> /dev/null) || pnpm_store_path=""
         stop_section_spinner
+        COREPACK_ENABLE_DOWNLOAD_PROMPT=0 clean_tool_cache "pnpm cache" "${pnpm_store_path:-}" pnpm store prune
         if [[ -n "$pnpm_store_path" && "$pnpm_store_path" != "$pnpm_default_store" ]]; then
             safe_clean "$pnpm_default_store"/* "Orphaned pnpm store"
         fi
@@ -97,7 +112,7 @@ clean_dev_npm() {
 clean_dev_python() {
     # Check pip3 is functional (not just macOS stub that triggers CLT install dialog)
     if command -v pip3 > /dev/null 2>&1 && pip3 --version > /dev/null 2>&1; then
-        clean_tool_cache "pip cache" bash -c 'pip3 cache purge > /dev/null 2>&1 || true'
+        clean_tool_cache "pip cache" "" bash -c 'pip3 cache purge > /dev/null 2>&1 || true'
         note_activity
     fi
     safe_clean ~/.pyenv/cache/* "pyenv cache"
@@ -136,12 +151,12 @@ clean_dev_go() {
     fi
 
     if [[ "$build_protected" != "true" && "$mod_protected" != "true" ]]; then
-        clean_tool_cache "Go cache" bash -c 'go clean -modcache > /dev/null 2>&1 || true; go clean -cache > /dev/null 2>&1 || true'
+        clean_tool_cache "Go cache" "" bash -c 'go clean -modcache > /dev/null 2>&1 || true; go clean -cache > /dev/null 2>&1 || true'
     elif [[ "$build_protected" == "true" ]]; then
-        clean_tool_cache "Go module cache" bash -c 'go clean -modcache > /dev/null 2>&1 || true'
+        clean_tool_cache "Go module cache" "" bash -c 'go clean -modcache > /dev/null 2>&1 || true'
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Go build cache · skipped (whitelist)"
     else
-        clean_tool_cache "Go build cache" bash -c 'go clean -cache > /dev/null 2>&1 || true'
+        clean_tool_cache "Go build cache" "" bash -c 'go clean -cache > /dev/null 2>&1 || true'
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Go module cache · skipped (whitelist)"
     fi
     note_activity
@@ -201,7 +216,7 @@ clean_dev_docker() {
                 # Remove unused images, stopped containers, unused networks, and
                 # anonymous volumes in one pass. This maps better to the large
                 # reclaimable "docker system df" buckets users typically see.
-                clean_tool_cache "Docker unused data" docker system prune -af --volumes
+                clean_tool_cache "Docker unused data" "" docker system prune -af --volumes
             else
                 echo -e "  ${GRAY}${ICON_WARNING}${NC} Docker unused data · skipped (daemon not running)"
                 note_activity
@@ -218,7 +233,7 @@ clean_dev_docker() {
 clean_dev_nix() {
     if command -v nix-collect-garbage > /dev/null 2>&1; then
         if [[ "$DRY_RUN" != "true" ]]; then
-            clean_tool_cache "Nix garbage collection" nix-collect-garbage --delete-older-than 30d
+            clean_tool_cache "Nix garbage collection" "" nix-collect-garbage --delete-older-than 30d
         else
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Nix garbage collection · would clean"
         fi

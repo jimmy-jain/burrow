@@ -202,23 +202,25 @@ check_disk_smart() {
         return
     fi
 
-    local smart_output=""
-    smart_output=$(diskutil info disk0 2> /dev/null | grep "SMART Status" || echo "")
+    local boot_disk
+    boot_disk=$(diskutil info / 2> /dev/null | awk -F: '/Part of Whole/ {gsub(/^[ \t]+/, "", $2); print $2}')
+    [[ -z "$boot_disk" ]] && return
+    local smart_status=""
+    smart_status=$(diskutil info "$boot_disk" 2> /dev/null | awk -F: '/SMART Status/ {gsub(/^[ \t]+/, "", $2); print $2}')
 
-    if [[ -z "$smart_output" ]]; then
+    if [[ -z "$smart_status" ]]; then
         record_check "Disk SMART" "warn" "SMART status not available" \
             "Your disk may not support SMART monitoring"
         return
     fi
 
-    if [[ "$smart_output" == *"Verified"* ]]; then
+    if [[ "$smart_status" == *"Verified"* ]]; then
         record_check "Disk SMART" "pass" "Disk health verified" ""
-    elif [[ "$smart_output" == *"Failing"* ]]; then
+    elif [[ "$smart_status" == *"Failing"* ]]; then
         record_check "Disk SMART" "fail" "Disk SMART status: Failing" \
             "Back up your data immediately and consider replacing the disk"
     else
-        local status_text=""
-        status_text=$(printf '%s' "$smart_output" | sed 's/.*SMART Status:[[:space:]]*//')
+        local status_text="$smart_status"
         record_check "Disk SMART" "warn" "Disk SMART status: ${status_text}" ""
     fi
 }

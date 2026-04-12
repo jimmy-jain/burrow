@@ -23,6 +23,10 @@ source "$SCRIPT_DIR/lib/check/health_json.sh"
 source "$SCRIPT_DIR/lib/check/all.sh"
 source "$SCRIPT_DIR/lib/manage/whitelist.sh"
 
+drain_pending_input() {
+    while IFS= read -r -s -t 0.1 -n1 _ 2>/dev/null; do :; done
+}
+
 print_header() {
     printf '\n'
     echo -e "${PURPLE_BOLD}Optimize and Check${NC}"
@@ -548,11 +552,34 @@ main() {
     fi
 
     if [[ ${#confirm_items[@]} -gt 0 ]]; then
+        echo ""
+        local confirm_names=()
         for item in "${confirm_items[@]}"; do
-            IFS='|' read -r name desc action path <<< "$item"
-            announce_action "$name" "$desc" "confirm"
-            execute_optimization "$action" "$path"
+            IFS='|' read -r name _ _ _ <<< "$item"
+            confirm_names+=("$name")
         done
+        local joined
+        joined=$(printf '%s, ' "${confirm_names[@]}")
+        joined="${joined%, }"
+        echo -ne "${PURPLE}${ICON_ARROW}${NC} Run ${#confirm_items[@]} extra tasks (${joined})? ${GREEN}Enter${NC} yes, ${GRAY}ESC${NC} skip: "
+        drain_pending_input
+        local key=""
+        IFS= read -r -s -n1 key || key=""
+        drain_pending_input
+        echo ""
+        case "$key" in
+            "" | $'\n' | $'\r' | y | Y)
+                for item in "${confirm_items[@]}"; do
+                    IFS='|' read -r name desc action path <<< "$item"
+                    announce_action "$name" "$desc" "confirm"
+                    execute_optimization "$action" "$path"
+                done
+                ;;
+            *)
+                echo -e "${GRAY}  Skipped ${#confirm_items[@]} optional task(s)${NC}"
+                confirm_items=()
+                ;;
+        esac
     fi
 
     local safe_count=${#safe_items[@]}
