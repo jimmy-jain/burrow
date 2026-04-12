@@ -20,7 +20,10 @@ var (
 	BuildTime = ""
 
 	// Command-line flags
-	jsonOutput = flag.Bool("json", false, "output metrics as JSON instead of TUI")
+	jsonOutput       = flag.Bool("json", false, "output metrics as JSON instead of TUI")
+	procCPUThreshold = flag.Float64("proc-cpu-threshold", 100, "alert when a process stays above this CPU percent")
+	procCPUWindow    = flag.Duration("proc-cpu-window", 5*time.Minute, "continuous duration a process must exceed the CPU threshold")
+	procCPUAlerts    = flag.Bool("proc-cpu-alerts", true, "enable persistent high-CPU process alerts")
 )
 
 func shouldUseJSONOutput(forceJSON bool, stdout *os.File) bool {
@@ -67,8 +70,26 @@ func getConfigPath() string {
 
 func newModel() model {
 	return model{
-		collector: NewCollector(),
+		collector: NewCollector(processWatchOptionsFromFlags()),
 	}
+}
+
+func processWatchOptionsFromFlags() ProcessWatchOptions {
+	return ProcessWatchOptions{
+		Enabled:      *procCPUAlerts,
+		CPUThreshold: *procCPUThreshold,
+		Window:       *procCPUWindow,
+	}
+}
+
+func validateFlags() error {
+	if *procCPUThreshold < 0 {
+		return fmt.Errorf("--proc-cpu-threshold must be >= 0")
+	}
+	if *procCPUWindow <= 0 {
+		return fmt.Errorf("--proc-cpu-window must be > 0")
+	}
+	return nil
 }
 
 func (m model) Init() tea.Cmd {
@@ -123,6 +144,7 @@ func (m model) View() string {
 	}
 
 	header, mascot := renderHeader(m.metrics, m.errMessage, termWidth)
+	alertBar := renderProcessAlertBar(m.metrics.ProcessAlerts, termWidth)
 
 	if termWidth <= 80 {
 		cardWidth := termWidth
@@ -138,9 +160,12 @@ func (m model) View() string {
 			}
 			rendered = append(rendered, renderCard(c, cardWidth, 0))
 		}
-		// Combine header, mascot, and cards with consistent spacing
+		// Combine header, alert bar, mascot, and cards with consistent spacing
 		var content []string
 		content = append(content, header)
+		if alertBar != "" {
+			content = append(content, alertBar)
+		}
 		if mascot != "" {
 			content = append(content, mascot)
 		}
@@ -151,9 +176,12 @@ func (m model) View() string {
 	cardWidth := max(24, termWidth/2-4)
 	cards := buildCards(m.metrics, cardWidth)
 	twoCol := renderTwoColumns(cards, termWidth)
-	// Combine header, mascot, and cards with consistent spacing
+	// Combine header, alert bar, mascot, and cards with consistent spacing
 	var content []string
 	content = append(content, header)
+	if alertBar != "" {
+		content = append(content, alertBar)
+	}
 	if mascot != "" {
 		content = append(content, mascot)
 	}
@@ -184,7 +212,7 @@ func animTickWithSpeed(cpuUsage float64) tea.Cmd {
 
 // runJSONMode collects metrics once and outputs as JSON.
 func runJSONMode() {
-	collector := NewCollector()
+	collector := NewCollector(processWatchOptionsFromFlags())
 
 	// First collection initializes network state (returns nil for network)
 	_, _ = collector.Collect()
@@ -216,8 +244,22 @@ func runTUIMode() {
 	}
 }
 
+func activeAlerts(alerts []ProcessAlert) []ProcessAlert {
+	var active []ProcessAlert
+	for _, alert := range alerts {
+		if alert.Status == "active" {
+			active = append(active, alert)
+		}
+	}
+	return active
+}
+
 func main() {
 	flag.Parse()
+	if err := validateFlags(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(2)
+	}
 
 	if shouldUseJSONOutput(*jsonOutput, os.Stdout) {
 		runJSONMode()
