@@ -145,6 +145,8 @@ type DiskStatus struct {
 	Fstype      string  `json:"fstype"`
 	External    bool    `json:"external"`
 	SMARTStatus string  `json:"smart_status,omitempty"`
+	TrashBytes  uint64  `json:"trash_bytes,omitempty"`
+	TrashApprox bool    `json:"trash_approx,omitempty"`
 }
 
 type NetworkStatus struct {
@@ -181,6 +183,7 @@ type BatteryStatus struct {
 type ThermalStatus struct {
 	CPUTemp      float64 `json:"cpu_temp"`
 	GPUTemp      float64 `json:"gpu_temp"`
+	BatteryTemp  float64 `json:"battery_temp"`
 	FanSpeed     int     `json:"fan_speed"`
 	FanCount     int     `json:"fan_count"`
 	SystemPower  float64 `json:"system_power"`  // System power consumption in Watts

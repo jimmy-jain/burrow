@@ -225,6 +225,7 @@ clean_dev_docker() {
         else
             note_activity
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Docker unused data · would clean"
+            echo -e "  ${GRAY}${ICON_REVIEW}${NC} ${GRAY}Prune:  docker system prune --filter until=720h${NC}"
         fi
     fi
     safe_clean ~/.docker/buildx/cache/* "Docker BuildX cache"
@@ -1045,6 +1046,8 @@ clean_dev_editors() {
     safe_clean ~/Library/Application\ Support/Code/GPUCache/* "VS Code GPU cache"
     safe_clean ~/Library/Application\ Support/Code/CachedExtensionVSIXs/* "VS Code extension cache"
     safe_clean ~/Library/Caches/Zed/* "Zed cache"
+    safe_clean ~/Library/Application\ Support/Cursor/Cache/* "Cursor IDE cache"
+    safe_clean ~/Library/Application\ Support/Cursor/CachedData/* "Cursor IDE data cache"
 }
 # Xcode DerivedData for inactive projects (source directory no longer exists).
 # Lists affected projects before cleanup. In non-dry-run mode, shows which

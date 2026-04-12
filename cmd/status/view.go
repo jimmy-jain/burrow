@@ -275,6 +275,17 @@ func renderDiskCard(disks []DiskStatus, io DiskIOStatus) cardData {
 			lines = append(lines, "SMART  "+smartStyle.Render(disks[0].SMARTStatus))
 		}
 	}
+	// Show trash size for the primary internal disk.
+	for _, d := range disks {
+		if !d.External && d.TrashBytes > 0 {
+			trashStr := humanBytesShort(d.TrashBytes)
+			if d.TrashApprox {
+				trashStr = "~" + trashStr
+			}
+			lines = append(lines, fmt.Sprintf("%-6s %s", "Trash", trashStr))
+			break
+		}
+	}
 	readBar := ioBar(io.ReadRate)
 	writeBar := ioBar(io.WriteRate)
 	lines = append(lines, fmt.Sprintf("Read   %s  %.1f MB/s", readBar, io.ReadRate))

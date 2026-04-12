@@ -225,6 +225,40 @@ check_disk_smart() {
     fi
 }
 
+# Check 8: Orphaned LaunchAgents
+check_orphan_launch_agents() {
+    if command -v is_whitelisted > /dev/null && is_whitelisted "check_orphan_launch_agents"; then return; fi
+
+    local -a search_dirs orphans=()
+    IFS=: read -r -a search_dirs <<< "${BW_LAUNCH_AGENT_DIRS:-$HOME/Library/LaunchAgents:/Library/LaunchAgents}"
+
+    local plist label program
+    for dir in "${search_dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r -d '' plist; do
+            label=$(basename "$plist" .plist)
+            [[ "$label" == com.apple.* ]] && continue
+            program=$(/usr/bin/plutil -extract Program raw -o - "$plist" 2> /dev/null \
+                || /usr/bin/plutil -extract ProgramArguments.0 raw -o - "$plist" 2> /dev/null)
+            [[ "$program" == /* && ! -e "$program" ]] && orphans+=("$label")
+        done < <(find "$dir" -maxdepth 1 -name "*.plist" -print0 2> /dev/null)
+    done
+
+    local count=${#orphans[@]}
+
+    if [[ $count -eq 0 ]]; then
+        record_check "Launch Agents" "pass" "No orphaned launch agents" ""
+        return
+    fi
+
+    local s=""; ((count > 1)) && s="s" || true
+    local preview="${orphans[0]}"
+    ((count > 1)) && preview="${preview}, ${orphans[1]}" || true
+    ((count > 2)) && preview="${preview}, ${orphans[2]}" || true
+    ((count > 3)) && preview="${preview} +$((count - 3))" || true
+    record_check "Launch Agents" "warn" "${count} orphaned launch agent${s}" "$preview"
+}
+
 # ============================================================================
 # Output Formatters
 # ============================================================================
@@ -386,6 +420,7 @@ main() {
     check_node_version
     check_brew_health
     check_disk_smart
+    check_orphan_launch_agents
 
     # Output results
     if [[ "$json_mode" == "true" ]]; then
