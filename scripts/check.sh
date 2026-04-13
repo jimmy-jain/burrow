@@ -111,7 +111,9 @@ if [[ "$MODE" != "check" ]]; then
 fi
 
 echo -e "${YELLOW}3. Running Go linters...${NC}"
-if command -v golangci-lint > /dev/null 2>&1; then
+if [[ "${CI:-}" == "true" ]]; then
+    echo -e "${YELLOW}${ICON_WARNING} Skipping golangci-lint in CI (handled by golangci-lint-action)${NC}\n"
+elif command -v golangci-lint > /dev/null 2>&1; then
     if ! golangci-lint config verify; then
         echo -e "${RED}${ICON_ERROR} golangci-lint config invalid${NC}\n"
         exit 1

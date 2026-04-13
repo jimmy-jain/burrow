@@ -16,18 +16,18 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
 
       - name: Install tools
         run: |
           brew install shfmt shellcheck
           go install golang.org/x/tools/cmd/goimports@latest
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          install-only: true
-
-      - name: Run checks
+      - name: Run shell + syntax checks
         run: ./scripts/check.sh --no-format
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1.6
+          args: --config .golangci.yml ./cmd/...
