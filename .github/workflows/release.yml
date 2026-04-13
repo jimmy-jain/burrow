@@ -1,0 +1,101 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "V*"
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install bats-core
+        run: brew install bats-core
+
+      - name: Run tests
+        run: ./scripts/test.sh
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build binaries
+        run: make release-${{ matrix.arch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.arch }}
+          path: bin/*-darwin-${{ matrix.arch }}
+          if-no-files-found: error
+
+  release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download arm64 binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-arm64
+          path: dist/arm64
+
+      - name: Download amd64 binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-amd64
+          path: dist/amd64
+
+      - name: Generate release notes
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Get the previous V* tag
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "V*" "${TAG}^" 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" --no-merges)
+          else
+            NOTES=$(git log "${TAG}" --pretty=format:"- %s" --no-merges)
+          fi
+          # Write notes to a file to avoid multi-line env issues
+          echo "$NOTES" > release_notes.txt
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          chmod +x dist/arm64/* dist/amd64/* 2>/dev/null || true
+          gh release create "${TAG}" \
+            --title "Burrow ${TAG}" \
+            --notes-file release_notes.txt \
+            dist/arm64/* \
+            dist/amd64/*

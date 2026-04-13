@@ -58,6 +58,7 @@ release-amd64: mod-download
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-darwin-amd64 $(STATUS_SRC)
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(WATCH)-darwin-amd64 $(WATCH_SRC)
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(DUPES)-darwin-amd64 $(DUPES_SRC)
+	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/burrow-mcp-darwin-amd64 $(MCP_SRC)
 
 release-arm64: mod-download
 	@echo "Building release binaries (arm64)..."
@@ -65,6 +66,7 @@ release-arm64: mod-download
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-darwin-arm64 $(STATUS_SRC)
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(WATCH)-darwin-arm64 $(WATCH_SRC)
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(DUPES)-darwin-arm64 $(DUPES_SRC)
+	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/burrow-mcp-darwin-arm64 $(MCP_SRC)
 
 clean:
 	@echo "Cleaning binaries..."
