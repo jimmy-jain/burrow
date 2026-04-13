@@ -1,21 +1,161 @@
 name: release
 
 on:
+  workflow_run:
+    workflows: [check, test]
+    types: [completed]
+    branches: [main]
   push:
     tags:
       - "V*"
 
+permissions:
+  contents: write
+
 jobs:
+  auto-tag:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-14
+    steps:
+      - name: Verify both check and test passed for this SHA
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          check_ok=$(gh api "repos/${REPO}/actions/workflows/check.yml/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
+            2> /dev/null || echo "")
+          test_ok=$(gh api "repos/${REPO}/actions/workflows/test.yml/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
+            2> /dev/null || echo "")
+
+          echo "check: $check_ok, test: $test_ok"
+          if [ "$check_ok" = "success" ] && [ "$test_ok" = "success" ]; then
+            echo "gate=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "gate=fail" >> "$GITHUB_OUTPUT"
+            echo "Both check and test must succeed for the same SHA before tagging."
+          fi
+
+      - name: Checkout tested SHA
+        if: steps.gate.outputs.gate == 'pass'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+          token: ${{ github.token }}
+
+      - name: Ensure SHA is still current main HEAD
+        id: head_guard
+        if: steps.gate.outputs.gate == 'pass'
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          remote_main=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          echo "remote_main=$remote_main"
+          if [ "$remote_main" = "$SHA" ]; then
+            echo "head_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "head_ok=false" >> "$GITHUB_OUTPUT"
+            echo "main advanced to $remote_main after this run started — skipping stale tag flow"
+          fi
+
+      - name: Skip if bump commit
+        id: check_skip
+        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true'
+        run: |
+          COMMIT_MSG=$(git log -1 --format="%s")
+          if echo "$COMMIT_MSG" | grep -q '\[skip ci\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: commit contains [skip ci]"
+          elif echo "$COMMIT_MSG" | grep -q '^chore: bump version to'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: commit is a version bump"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine version bump
+        id: version
+        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true' && steps.check_skip.outputs.skip == 'false'
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 --match "V*" 2>/dev/null || echo "V0.0.0")
+          echo "Last tag: $LAST_TAG"
+
+          LAST_TAG_COMMIT=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || echo "")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          if [ "$LAST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
+            echo "HEAD is already tagged as $LAST_TAG — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          COMMITS=$(git log "${LAST_TAG}..HEAD" --format="%s %b" 2>/dev/null || echo "")
+          if [ -z "$COMMITS" ]; then
+            echo "No new commits since $LAST_TAG — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          BUMP="patch"
+          while IFS= read -r line; do
+            if echo "$line" | grep -qE '(BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:)'; then
+              BUMP="minor"
+            fi
+            if echo "$line" | grep -qE '^feat(\([^)]*\))?[!:]'; then
+              [ "$BUMP" != "minor" ] && BUMP="minor"
+            fi
+          done <<< "$COMMITS"
+
+          echo "Bump type: $BUMP"
+
+          CURRENT="${LAST_TAG#V}"
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+          if [ "$BUMP" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version and tag
+        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true' && steps.check_skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          sed -i '' "s/^VERSION=\"[0-9]*\.[0-9]*\.[0-9]*\"/VERSION=\"${NEW_VERSION}\"/" burrow
+          grep "^VERSION=" burrow
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add burrow
+          git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
+          git tag "V${NEW_VERSION}"
+          git push origin HEAD:main "refs/tags/V${NEW_VERSION}"
+
   test:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
 
       - name: Install bats-core
         run: brew install bats-core
@@ -24,6 +164,7 @@ jobs:
         run: ./scripts/test.sh
 
   build:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
     needs: test
     strategy:
       matrix:
@@ -35,12 +176,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
 
       - name: Build binaries
         run: make release-${{ matrix.arch }}
@@ -52,12 +193,13 @@ jobs:
           path: bin/*-darwin-${{ matrix.arch }}
           if-no-files-found: error
 
-  release:
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
     needs: [test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -74,19 +216,15 @@ jobs:
           path: dist/amd64
 
       - name: Generate release notes
-        id: notes
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          # Get the previous V* tag
           PREV_TAG=$(git describe --tags --abbrev=0 --match "V*" "${TAG}^" 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
-            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" --no-merges)
+            git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" --no-merges > release_notes.txt
           else
-            NOTES=$(git log "${TAG}" --pretty=format:"- %s" --no-merges)
+            git log "${TAG}" --pretty=format:"- %s" --no-merges > release_notes.txt
           fi
-          # Write notes to a file to avoid multi-line env issues
-          echo "$NOTES" > release_notes.txt
 
       - name: Create GitHub release
         env:

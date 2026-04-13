@@ -5,7 +5,6 @@ version: "2"
 
 run:
   timeout: 5m
-  # Only lint Go code in cmd directory
   modules-download-mode: readonly
 
 linters:
@@ -16,7 +15,8 @@ linters:
     - errcheck
     - ineffassign
     - unused
-    # modernize: re-enable once golangci-lint v2.3+ is pinned
+    # modernize is intentionally disabled to avoid expanding CI lint scope
+    # while stabilizing the GitHub Actions toolchain.
 
   settings:
     govet:
