@@ -1,7 +1,9 @@
 name: auto-tag
 
 on:
-  push:
+  workflow_run:
+    workflows: [check, test]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -9,16 +11,43 @@ permissions:
 
 jobs:
   auto-tag:
+    # Only proceed when the triggering workflow succeeded.
+    # We then verify the OTHER workflow also passed for the same SHA.
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: macos-14
     steps:
+      - name: Verify both check and test passed for this SHA
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          check_ok=$(gh api "repos/${REPO}/actions/workflows/check.yml/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
+            2>/dev/null || echo "")
+          test_ok=$(gh api "repos/${REPO}/actions/workflows/test.yml/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
+            2>/dev/null || echo "")
+          echo "check: $check_ok, test: $test_ok"
+          if [ "$check_ok" = "success" ] && [ "$test_ok" = "success" ]; then
+            echo "gate=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "gate=fail" >> "$GITHUB_OUTPUT"
+            echo "Both check and test must succeed — skipping"
+          fi
+
       - name: Checkout
+        if: steps.gate.outputs.gate == 'pass'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
           token: ${{ github.token }}
 
-      - name: Skip if bump commit or no-op
+      - name: Skip if bump commit
         id: check_skip
+        if: steps.gate.outputs.gate == 'pass'
         run: |
           COMMIT_MSG=$(git log -1 --format="%s")
           if echo "$COMMIT_MSG" | grep -q '\[skip ci\]'; then
@@ -33,13 +62,11 @@ jobs:
 
       - name: Determine version bump
         id: version
-        if: steps.check_skip.outputs.skip == 'false'
+        if: steps.gate.outputs.gate == 'pass' && steps.check_skip.outputs.skip == 'false'
         run: |
-          # Get the latest V* tag
           LAST_TAG=$(git describe --tags --abbrev=0 --match "V*" 2>/dev/null || echo "V0.0.0")
           echo "Last tag: $LAST_TAG"
 
-          # Check if HEAD is already the tagged commit — skip if so
           LAST_TAG_COMMIT=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || echo "")
           HEAD_COMMIT=$(git rev-parse HEAD)
           if [ "$LAST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
@@ -48,9 +75,7 @@ jobs:
             exit 0
           fi
 
-          # Get commits since last tag
           COMMITS=$(git log "${LAST_TAG}..HEAD" --format="%s %b" 2>/dev/null || echo "")
-
           if [ -z "$COMMITS" ]; then
             echo "No new commits since $LAST_TAG — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -59,25 +84,18 @@ jobs:
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-          # Determine bump type from conventional commits
           BUMP="patch"
           while IFS= read -r line; do
-            # Breaking change: BREAKING CHANGE in body or ! after type
             if echo "$line" | grep -qE '(BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:)'; then
-              # Pre-1.0: treat breaking as minor
               BUMP="minor"
             fi
-            # Feature: minor bump
             if echo "$line" | grep -qE '^feat(\([^)]*\))?[!:]'; then
-              if [ "$BUMP" != "minor" ]; then
-                BUMP="minor"
-              fi
+              [ "$BUMP" != "minor" ] && BUMP="minor"
             fi
           done <<< "$COMMITS"
 
           echo "Bump type: $BUMP"
 
-          # Parse current version (strip V prefix)
           CURRENT="${LAST_TAG#V}"
           MAJOR=$(echo "$CURRENT" | cut -d. -f1)
           MINOR=$(echo "$CURRENT" | cut -d. -f2)
@@ -93,24 +111,16 @@ jobs:
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Bump version and tag
-        if: steps.check_skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
+        if: steps.gate.outputs.gate == 'pass' && steps.check_skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          # Update VERSION line in burrow script
           sed -i '' "s/^VERSION=\"[0-9]*\.[0-9]*\.[0-9]*\"/VERSION=\"${NEW_VERSION}\"/" burrow
-
-          # Verify the change was applied
           grep "^VERSION=" burrow
-
-          # Configure git identity
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Commit and tag
           git add burrow
           git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
           git tag "V${NEW_VERSION}"

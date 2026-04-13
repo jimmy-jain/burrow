@@ -16,8 +16,7 @@ linters:
     - errcheck
     - ineffassign
     - unused
-    # Additional linters
-    - modernize
+    # modernize: re-enable once golangci-lint v2.3+ is pinned
 
   settings:
     govet:
