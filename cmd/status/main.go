@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,15 +56,6 @@ type model struct {
 	ready       bool
 	lastUpdated time.Time
 	collecting  bool
-}
-
-// getConfigPath returns the path to the status preferences file.
-func getConfigPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".config", "burrow", "status_prefs")
 }
 
 func newModel() model {
