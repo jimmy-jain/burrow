@@ -585,14 +585,29 @@ download_binary() {
         echo "Downloading ${binary_name}..."
     fi
 
-    if curl -fsSL --connect-timeout 10 --max-time 60 -o "$target_path" "$url"; then
+    local curl_exit=0
+    curl -fsSL --connect-timeout 10 --max-time 60 -o "$target_path" "$url" || curl_exit=$?
+
+    if [[ $curl_exit -eq 0 ]] && [[ -f "$target_path" ]]; then
+        # Verify we got a real binary, not an HTML error page
+        local file_type
+        file_type=$(file -b "$target_path" 2>/dev/null || true)
+        if [[ "$file_type" == *"HTML"* ]] || [[ "$file_type" == *"ASCII text"* ]]; then
+            rm -f "$target_path"
+            curl_exit=22  # treat as HTTP error
+        fi
+    fi
+
+    if [[ $curl_exit -eq 0 ]] && [[ -f "$target_path" ]]; then
         if [[ -t 1 ]]; then stop_line_spinner; fi
         chmod +x "$target_path"
         xattr -c "$target_path" 2> /dev/null || true
         log_success "Downloaded ${binary_name} binary"
     else
         if [[ -t 1 ]]; then stop_line_spinner; fi
-        log_warning "Could not download ${binary_name} binary, v${version}, trying local build"
+        rm -f "$target_path"
+        log_warning "Could not download ${binary_name} binary (v${version}, exit ${curl_exit})"
+        log_warning "URL: ${url}"
         if build_binary_from_source "$binary_name" "$target_path"; then
             return 0
         fi
