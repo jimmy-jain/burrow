@@ -1,226 +1,340 @@
 # Burrow - CLAUDE.md
 
-macOS system maintenance CLI (CleanMyMac + AppCleaner + DaisyDisk + iStat Menus in one binary).
-Hybrid architecture: Bash shell scripts for orchestration, Go for performance-critical TUI components.
-Fork of [tw93/Mole](https://github.com/tw93/Mole), rebranded as [jimmy-jain/burrow](https://github.com/jimmy-jain/burrow).
+Burrow is a macOS-only system maintenance CLI that combines cleanup, uninstall, disk analysis, duplicate detection, live monitoring, threshold alerts, reporting, and AI-tool integration in one project.
+
+This file reflects the repo as it exists today, based on the checked-in code, build files, hidden config, and command entrypoints in this workspace.
+
+## Project Snapshot
+
+- Primary CLI entrypoint: `burrow`
+- User-facing alias: `bw`
+- Main implementation split:
+  - Bash for orchestration, destructive flows, configuration, and menus
+  - Go for performance-sensitive analyzers, dashboards, duplicate scanning, alerts, and MCP server integration
+- Go module path: `github.com/jimmy-jain/burrow`
+- Current Go toolchain in repo: `go 1.25.0`
+
+## Verified Entrypoints
+
+### User CLI
+
+- `burrow` is the real router
+- `bw` is the lightweight alias users run most often
+- `burrow` sources:
+  - `lib/core/common.sh`
+  - `lib/core/commands.sh`
+
+### Go-backed wrappers
+
+These shell wrappers exec bundled binaries from `bin/` when present:
+
+- `bin/analyze.sh` -> `bin/analyze-go`
+- `bin/status.sh` -> `bin/status-go`
+- `bin/dupes.sh` -> `bin/dupes-go`
+- `bin/watch.sh` -> `bin/watch-go`
+
+### Separate MCP binary
+
+- `cmd/mcp/` builds to `bin/burrow-mcp`
+- This is not a normal `bw mcp` subcommand
+- It exposes Burrow capabilities over MCP stdio for assistant/tool integrations
 
 ## Quick Reference
 
 ```bash
-# Development setup
+# Dev setup
 brew install shfmt shellcheck bats-core golangci-lint
 go install golang.org/x/tools/cmd/goimports@latest
 git config core.hooksPath .githooks
 
-# Quality checks (format + lint, run before committing)
+# Quality checks
 ./scripts/check.sh
 
-# Tests (BATS for shell, go test for Go)
+# Tests
 ./scripts/test.sh
 
-# Build Go binaries (analyze + status + watch + dupes)
-make build              # local architecture
-make release-arm64      # release for arm64
-make release-amd64      # release for amd64
+# Local build
+make build
 
-# Run Go components directly
+# Release builds
+make release-arm64
+make release-amd64
+
+# Run Go programs directly
 go run ./cmd/analyze
 go run ./cmd/status
-go run ./cmd/watch
 go run ./cmd/dupes
+go run ./cmd/watch
+go run ./cmd/mcp
 ```
+
+## Actual Command Surface
+
+The shared command list in `lib/core/commands.sh` and router in `burrow` currently expose:
+
+| Command | Type | Notes |
+|---------|------|-------|
+| `bw clean` | Bash | Deep cleanup with dry-run and whitelist support |
+| `bw uninstall` | Bash | App removal plus remnants and launch agents |
+| `bw optimize` | Bash | Maintenance/optimization flows |
+| `bw analyze` | Go TUI / JSON | Disk explorer; supports `--json` |
+| `bw status` | Go TUI / JSON | Live system dashboard; auto-JSON when piped |
+| `bw purge` | Bash | Project artifact cleanup |
+| `bw installer` | Bash | Installer file cleanup |
+| `bw touchid` | Bash | Touch ID sudo configuration |
+| `bw size` | Bash | Developer cache size audit |
+| `bw doctor` | Bash | Developer environment checks |
+| `bw log` | Bash | Operations log viewer |
+| `bw report` | Bash | Combined machine health report |
+| `bw dupes` | Go CLI | Duplicate detection, delete, conserve, restore |
+| `bw watch` | Go CLI | Rule-based monitoring with notifications |
+| `bw schedule` | Bash | LaunchAgent maintenance scheduling |
+| `bw hook` | Bash | Shell hook integration |
+| `bw launchers` | Bash | Raycast/Alfred quick launcher setup |
+| `bw completion` | Bash | Shell completion setup |
+| `bw update` | Bash | Update flow for script or Homebrew installs |
+| `bw remove` | Bash | Remove Burrow from the system |
+| `bw help` | Bash | Help output |
+| `bw version` | Bash | Version/system info |
 
 ## Architecture
 
-### Dual-Language Design
+### High-level layout
 
 | Layer | Language | Purpose |
 |-------|----------|---------|
-| CLI entry + orchestration | Bash | `burrow` script routes subcommands, interactive menu |
-| Feature modules | Bash | `lib/clean/`, `lib/optimize/`, `lib/uninstall/`, `lib/manage/` |
-| Core libraries | Bash | `lib/core/` (file ops, UI, logging, sudo, path validation) |
-| Command wrappers | Bash | `bin/*.sh` (thin wrappers that source libs and run features) |
-| Disk analyzer TUI | Go | `cmd/analyze/` (bubbletea + lipgloss) |
-| System monitor TUI | Go | `cmd/status/` (bubbletea + lipgloss, gopsutil for metrics) |
-| Duplicate finder | Go | `cmd/dupes/` (xxhash content hashing, conserve/restore) |
-| Threshold alerts | Go | `cmd/watch/` (background polling, macOS notifications) |
+| CLI routing | Bash | `burrow`, `bw`, command dispatch, version/update/remove |
+| Core shell libraries | Bash | Logging, UI, safe file ops, help text, sudo, app protection |
+| Feature modules | Bash | Cleanup, uninstall, optimize, report, doctor, size, manage, log |
+| TUI / scanning tools | Go | Analyze disk usage, status dashboard |
+| CLI utilities | Go | Duplicate detection, threshold watch, MCP server |
+| Plugin integration | JSON/Markdown | Claude plugin metadata and skill routing |
+| CI / release | YAML | Checks, tests, tagging, release publishing |
 
-### Directory Layout
+### Shell loading order
 
-```
-burrow                  # Main CLI entry point — routes subcommands
-bw                      # Lightweight alias -> burrow
-bin/                    # Command wrappers (*.sh) + compiled Go binaries
-lib/
-  core/                 # Shared libraries: common.sh, base.sh, log.sh, file_ops.sh, ui.sh, sudo.sh, etc.
-  clean/                # Cleanup modules: user.sh, dev.sh, project.sh, system.sh, apps.sh, caches.sh
-  optimize/             # Optimization: tasks.sh, maintenance.sh
-  uninstall/            # App removal: batch.sh, brew.sh
-  manage/               # Config management: whitelist.sh, schedule.sh, hook.sh
-  size/                 # Dev cache size audit: main.sh
-  doctor/               # Developer environment health checks: checks.sh
-  log/                  # Operations log viewer: viewer.sh
-  report/               # Machine health JSON report: main.sh
-cmd/
-  analyze/              # Go disk analyzer (bubbletea MVC)
-  status/               # Go system monitor (bubbletea, gopsutil metrics)
-  dupes/                # Go duplicate file finder (xxhash, conserve/restore, Finder trash)
-  watch/                # Go threshold alerts (rules, notifications, predictive disk)
-tests/                  # BATS test suites
-scripts/                # Dev/CI scripts (check.sh, test.sh)
-install.sh              # Standalone installer
+`lib/core/common.sh` is the orchestrator and is guarded by:
+
+```bash
+if [[ -n "${BURROW_COMMON_LOADED:-}" ]]; then
+    return 0
+fi
 ```
 
-### Commands
+It sources core modules in this order:
 
-| Command | Type | Description |
-|---------|------|-------------|
-| `bw clean` | Shell | Deep cleanup with safety validation, dry-run, whitelist |
-| `bw uninstall` | Shell | Remove apps + launch agents, preferences, remnants |
-| `bw optimize` | Shell | Refresh caches & services |
-| `bw analyze` | Go TUI | Visual disk explorer with Finder trash integration |
-| `bw status` | Go TUI | Live system health dashboard (CPU, GPU, memory, disk, network, battery) |
-| `bw purge` | Shell | Clean project build artifacts (node_modules, target, etc.) |
-| `bw installer` | Shell | Find and remove installer files |
-| `bw size` | Shell | Developer cache size audit (table + `--json`) |
-| `bw doctor` | Shell | Developer environment health checks (`--json`) |
-| `bw log` | Shell | Operations log viewer (`--since`, `--grep`, `--tail`) |
-| `bw report` | Shell | Machine health snapshot as JSON (`--out`) |
-| `bw dupes` | Go | Find and manage duplicate files (`--conserve`, `--restore`, `--delete`, `--json`) |
-| `bw watch` | Go | Background threshold alerts with macOS notifications |
-| `bw schedule` | Shell | LaunchAgent maintenance (install/remove/status) |
-| `bw hook` | Shell | Shell cd-hook integration (bash/zsh/fish) |
-| `bw touchid` | Shell | Configure Touch ID for sudo |
-| `bw completion` | Shell | Shell tab completion setup |
+1. `base.sh`
+2. `log.sh`
+3. `timeout.sh`
+4. `file_ops.sh`
+5. `help.sh`
+6. `ui.sh`
+7. `app_protection.sh`
+8. `sudo.sh` when present
 
-### Command Routing
+### Shell feature areas
 
-`mole` dispatches via case statement: `clean` -> `bin/clean.sh`, `status` -> `bin/status.sh`, etc.
-Without arguments, shows interactive menu with arrow/number/vim key navigation.
+- `lib/clean/`: user, system, developer, project, browser, app cache cleanup
+- `lib/uninstall/`: app uninstall flows and brew-related removal
+- `lib/optimize/`: maintenance and update prompting
+- `lib/manage/`: whitelist, schedule, hook, purge path config, update helpers, autofix
+- `lib/doctor/`: machine/developer health checks
+- `lib/size/`: cache size reporting
+- `lib/report/`: combined JSON/system reports
+- `lib/log/`: operations log viewer
+- `lib/check/`: health/report helper shell code
+- `lib/ui/`: menu/app selector UI helpers
 
-### Shell Library Loading
+### Go command packages
 
-`lib/core/common.sh` is the orchestrator, sourcing all core modules in order:
-`base.sh` -> `log.sh` -> `timeout.sh` -> `file_ops.sh` -> `help.sh` -> `ui.sh` -> `app_protection.sh` -> `sudo.sh`
+- `cmd/analyze/`
+  - Bubble Tea disk analyzer
+  - TUI plus `--json`
+  - Overview mode when no path is supplied
+  - Caching and background prefetch support
+- `cmd/status/`
+  - Bubble Tea live dashboard
+  - JSON output support
+  - Process alerting and rolling metrics
+- `cmd/dupes/`
+  - Report, delete, conserve, restore modes
+  - Uses xxhash-based duplicate pipeline
+- `cmd/watch/`
+  - Rule parser and evaluator
+  - macOS notification integration
+  - Configurable interval and one-shot mode
+- `cmd/mcp/`
+  - MCP stdio server
+  - Registers Burrow tools for status, analyze, dupes, doctor, size, report, clean preview/execute, duplicate conserve/restore
 
-Each module guards against double-sourcing: `if [[ -n "${MOLE_COMMON_LOADED:-}" ]]; then return 0; fi`
+## Repository Layout
 
-### Go Components
+```text
+burrow                  Main CLI router
+bw                      Lightweight alias
+bin/                    Command wrappers, helper scripts, compiled Go binaries
+cmd/                    Go command packages
+  analyze/              Disk analyzer
+  status/               Live system monitor
+  dupes/                Duplicate file finder
+  watch/                Threshold monitor
+  mcp/                  MCP server
+lib/                    Bash implementation
+  core/                 Shared infrastructure
+  clean/                Cleanup modules
+  uninstall/            App removal flows
+  optimize/             Maintenance/update helpers
+  manage/               Scheduling, hooks, config helpers
+  doctor/               Environment checks
+  size/                 Cache size audit
+  report/               Machine health report
+  log/                  Operations log viewer
+  check/                Report/check support code
+  ui/                   Menu helpers
+scripts/                Dev scripts, formatting, tests, launcher setup
+tests/                  BATS and shell integration tests
+.github/workflows/      CI and release workflows
+.githooks/              Local git hooks
+.claude-plugin/         Claude plugin metadata, commands, and Burrow skill
+Formula/                Homebrew formula
+assets/                 Branding/screenshots
+deprecate/              Old assets/workflows retained outside active paths
+```
 
-- `cmd/analyze/`: Charmbracelet bubbletea MVC. Concurrent filesystem scanning, heap-based top-N tracking, singleflight dedup, Finder trash integration
-- `cmd/status/`: Charmbracelet bubbletea MVC. Real-time metrics every 1s, RingBuffer history, composite health score (0-100), SMART health, Time Machine backup, network connections, per-process RSS, battery health in score
-- `cmd/dupes/`: CLI (no TUI). Multi-phase pipeline: walk → size group → inode dedup → partial xxhash (4KB) → full xxhash → sort by reclaimable. Three modes: report (default), delete (Finder Trash), conserve (relocate with manifest + restore). Cross-volume copy+verify for conserve
-- `cmd/watch/`: CLI (no TUI). Rule-based threshold monitoring, configurable via `~/.config/burrow/watch_rules`, macOS notifications via osascript, 15-minute cooldown per rule, predictive disk space projection
+## Hidden Files And What They Mean
+
+These hidden files matter to day-to-day work in this repo:
+
+- `.editorconfig`
+  - Shell uses 4 spaces
+  - YAML uses 2 spaces
+  - Makefile uses tabs
+- `.shellcheckrc`
+  - Disables `SC2155`, `SC2034`, `SC2059`, `SC1091`, `SC2038`
+- `.golangci.yml`
+  - Enables `govet`, `staticcheck`, `errcheck`, `ineffassign`, `unused`
+  - Uses `modules-download-mode: readonly`
+  - Config uses `version: "2"` schema — requires golangci-lint v2
+- `.githooks/pre-commit`
+  - Repo-defined hooks path is intended via `git config core.hooksPath .githooks`
+- `.github/workflows/`
+  - Active checked-in workflows are `check.yml`, `test.yml`, `release.yml`, `auto-tag.yml`
+- `.claude-plugin/`
+  - Committed integration assets for Claude plugin/skill use
+- `.claude/`
+  - Present locally in this workspace but ignored by git
+  - Contains local settings, permissions, and upstream-sync notes
+  - Useful context for local development, but not part of the shipped product
 
 ## Code Conventions
 
-### Bash (all shell scripts)
+### Bash
 
-- **Bash 3.2+ compatible** (macOS default) - no associative arrays, no `${var,,}`, no `readarray`
-- **BSD commands only** - `stat -f%z` not `stat --format`, `sed -i ''` not `sed -i`
-- `set -euo pipefail` in all scripts
-- 4-space indent, `snake_case` functions, `local` for function vars, `readonly` for constants
-- Quote all variables: `"$variable"` - no unquoted expansions
-- Use `[[ ]]` not `[ ]` for tests
-- Handle pipefail: `cmd || true`, check `${#array[@]} -gt 0` before iterating, `((count++)) || true`
-- **Never use `rm -rf` directly** - always use safe wrappers: `safe_remove()`, `safe_find_delete()`, `safe_sudo_remove()`
-- Path validation is mandatory before any deletion (see `lib/core/file_ops.sh`)
-- Logging via `log_info`, `log_success`, `log_warning`, `log_error` - never raw `echo` for user output
-- Debug mode: check `BW_DEBUG` variable, format as `[MODULE_NAME] message` to stderr
-- Use `command cp -f` in install scripts to bypass shell aliases (`cp -i`)
+- Target Bash `3.2+` on macOS
+- Do not use associative arrays, `${var,,}`, or `readarray`
+- Prefer BSD/macOS-compatible flags and behavior
+- Use `set -euo pipefail`
+- Use 4-space indentation
+- Prefer `snake_case` function names
+- Quote variable expansions
+- Prefer `[[ ... ]]` over `[ ... ]`
+- Favor `local` for function-scoped variables
+- Prefer Burrow safe deletion/path-validation helpers in normal feature code
+- Logging should go through `log_info`, `log_success`, `log_warning`, `log_error`
 
-### Go (cmd/analyze, cmd/status, cmd/dupes, cmd/watch)
+### Important Bash nuance
 
-- Files focused on single responsibility, <500 lines each
-- Extract constants to `constants.go` - no magic numbers
-- Use context for timeout control on external commands
-- Explicit error returns, no panic in production code
-- Table-driven tests, mock data for unavailable metrics
-- Format with `goimports` then `gofmt`
-- Lint with `golangci-lint` (govet, staticcheck, errcheck, ineffassign, unused, modernize)
-- Module path: `github.com/jimmy-jain/burrow`
+The repo standard is to avoid direct destructive deletion in feature code, but standalone scripts such as `install.sh` and `uninstall.sh` contain self-contained removal helpers because they must work without sourcing the full library stack. Preserve that distinction when editing.
 
-### Linter Configuration
+### Go
 
-- **shellcheck**: disabled SC2155, SC2034, SC2059, SC1091, SC2038 (see `.shellcheckrc`)
-- **golangci-lint**: govet (all except shadow/fieldalignment), errcheck (excludes Close/Run/Start), staticcheck (all except QF1003/SA9003)
-- **shfmt**: follows `.editorconfig` (4-space indent for shell)
+- Keep files focused and reasonably small
+- Prefer explicit errors over panics
+- Use table-driven tests
+- Use `goimports` then `gofmt`
+- Lint with `golangci-lint`
+- Most production Go code lives under `cmd/`
+- Several commands are Darwin-only via build tags
 
 ## Safety Rules
 
-These are critical - Burrow performs destructive operations on user systems:
+Burrow performs system maintenance and can delete user data, so these constraints are central:
 
-1. **Protected system paths** - Never delete: `/`, `/System/*`, `/bin/*`, `/sbin/*`, `/usr/bin`, `/usr/lib`, `/etc/*`, `/private/etc/*`, `/Library/Extensions`
-2. **Protected apps** - Safari, Finder, Mail, Messages, Notes, Calendar, Reminders (see `lib/core/app_protection.sh`)
-3. **Symlink resolution** - Always resolve symlink targets and validate resolved paths against protection lists
-4. **Path traversal prevention** - Reject paths containing `..`
-5. **Whitelist support** - User-protected paths in `~/.config/burrow/whitelist` must be respected
-6. **Dry-run first** - Destructive commands should support `--dry-run` preview
-7. **Operation logging** - All deletions logged to `operations.log` (5MB rotation)
-8. **Trash over delete** - `bw analyze` and `bw dupes --delete` move to Trash via Finder (recoverable), not permanent deletion
-9. **Pre-clean snapshot** - APFS local snapshot created before `bw clean` runs (skip with `BW_SKIP_SNAPSHOT=1`)
-10. **First-run safety** - First `bw clean` forces dry-run with confirmation before real cleanup
-11. **Risk categorization** - Dry-run output shows `[LOW]`/`[MEDIUM]`/`[HIGH]` risk labels
+1. Never delete protected system paths like `/`, `/System/*`, `/bin/*`, `/sbin/*`, `/usr/bin`, `/usr/lib`, `/etc/*`, `/private/etc/*`, or `/Library/Extensions`.
+2. Respect protected apps such as Safari, Finder, Mail, Messages, Notes, Calendar, and Reminders.
+3. Resolve symlinks before destructive actions and validate resolved targets.
+4. Reject path traversal patterns like `..`.
+5. Respect user whitelist entries in `~/.config/burrow/whitelist`.
+6. Prefer `--dry-run` support for destructive commands.
+7. Log operations to Burrow's operations log.
+8. Prefer Trash/recoverable flows where the command is designed for it.
+9. `bw clean` supports snapshot-oriented safety behavior and first-run caution.
+10. Surface risk honestly in previews and prompts.
 
-## Development & Release Strategy
+## Testing And Quality
 
-### Branching Model
+### Checked-in tooling
 
-| Branch | Purpose | CI Workflows |
-|--------|---------|--------------|
-| `main` | Stable releases only | check, test, codeql, release (on `V*` tag) |
-| `dev` | Integration branch, nightly builds | check, test, codeql, nightly |
-| `feat/*`, `fix/*` | Feature/fix branches | PR into `dev` |
+- `scripts/check.sh`
+  - Formats shell and Go code
+  - Runs `golangci-lint` or `go vet`
+  - Runs ShellCheck
+  - Runs syntax checks
+- `scripts/test.sh`
+  - Lints test scripts
+  - Runs BATS suites
+  - Runs `go build`, `go vet`, and `go test ./cmd/...`
+  - Checks module loading and lightweight integration flows
 
-### Release Channels
+### Current test footprint in this repo
 
-| Channel | Source | Install method |
-|---------|--------|----------------|
-| `stable` | Tagged `V*` on `main` | `brew install jimmy-jain/burrow/burrow` |
-| `nightly` | Every push to `dev` | `curl -fsSL .../install.sh \| BURROW_VERSION=main bash` |
-| `head` | Latest `main` commit | `brew install --HEAD jimmy-jain/burrow/burrow` |
+- `41` BATS files under `tests/`
+- `25` Go `_test.go` files under `cmd/`
 
-### Workflow
+## Build And Release Reality
 
-1. Create `feat/*` or `fix/*` branch from `dev`
-2. PR into `dev` — runs check, test, codeql, security
-3. Merge to `dev` — triggers nightly build (test → build → publish pre-release)
-4. When ready for stable release: PR `dev` → `main`, tag `V*`
-5. Tag push triggers release workflow (build → attest → GitHub release → Homebrew formula update)
+### Make targets
 
-### CI Pipelines
+- `make build`
+  - Builds local `analyze`, `status`, `watch`, `dupes`, and `burrow-mcp`
+- `make release-arm64`
+- `make release-amd64`
 
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| `check.yml` | Push/PR to main, dev | Format (shfmt, goimports, gofmt) + lint (shellcheck, golangci-lint) |
-| `test.yml` | Push/PR to main, dev | BATS shell tests, Go tests, macOS compatibility matrix, security checks |
-| `codeql.yml` | Push/PR to main, dev + weekly | Static analysis (Go + Actions) |
-| `nightly.yml` | Push to dev | Full test suite → build both archs → publish rolling pre-release |
-| `release.yml` | `V*` tag push | Go tests → build → verify binaries → checksums → attestation → GitHub release → Homebrew |
+### Current GitHub workflows
 
-## Testing
+- `check.yml`
+  - Push/PR on `main` and `dev`
+  - Runs shell checks and Go linting
+- `test.yml`
+  - Push/PR on `main` and `dev`
+  - Runs on `macos-14` (arm64); amd64 covered by release build matrix
+- `release.yml`
+  - Runs on `V*` tag push
+  - Tests, builds artifacts, publishes GitHub release
+- `auto-tag.yml`
+  - Triggered by `workflow_run` when both `check` and `test` succeed on `main`
+  - Bumps `VERSION` in `burrow`, commits, and creates a `V*` tag from conventional commits
+  - `feat:` → minor bump, everything else → patch bump
 
-- **Shell tests**: BATS framework, 30 test suites in `tests/` - run via `./scripts/test.sh`
-- **Go tests**: Standard `go test` in `cmd/analyze/`, `cmd/status/`, `cmd/dupes/`, `cmd/watch/`
-- **CI tests on**: macOS 14 (Sonoma) and macOS 15 (Sequoia)
-- **Security checks in CI**: unsafe `rm -rf` detection, app protection validation, secret scanning, high-risk path regression
-- **TDD workflow**: Write tests first, then implement until tests pass
+### Important note
 
-## User Configuration
+Older docs in the repo mention additional workflows such as `nightly` or `codeql`, but those are not present in the active `.github/workflows/` directory right now. Use the checked-in workflow files as the source of truth.
 
-| Path | Purpose |
-|------|---------|
-| `~/.config/burrow/whitelist` | Protected cache paths (one per line, `#` comments) |
-| `~/.config/burrow/purge_paths` | Custom project scan directories |
-| `~/.config/burrow/status_prefs` | Status panel preferences |
-| `~/.config/burrow/watch_rules` | Threshold alert rules (e.g., `disk_free_gb < 10`) |
-| `~/.config/burrow/install_channel` | Install metadata (channel, commit hash) |
-| `~/.config/burrow/first_run_done` | Sentinel file for first-run dry-run |
-| `~/.config/burrow/size_history.json` | Disk size history for predictive projections |
-| `~/.cache/burrow/` | Update notification cache, version check timestamps |
-| `~/Library/LaunchAgents/dev.burrow.maintenance.plist` | Scheduled maintenance agent |
+## User Config And Runtime Files
 
-## Key Dependencies
+- `~/.config/burrow/whitelist`
+- `~/.config/burrow/purge_paths`
+- `~/.config/burrow/status_prefs`
+- `~/.config/burrow/watch_rules`
+- `~/.config/burrow/install_channel`
+- `~/.config/burrow/first_run_done`
+- `~/.config/burrow/launcher_version`
+- `~/.config/burrow/size_history.json`
+- `~/.cache/burrow/`
+- `~/Library/LaunchAgents/dev.burrow.maintenance.plist`
 
-- **Go 1.25.0**, bubbletea v1.3.10, lipgloss v1.1.0, gopsutil v4.26.2, xxhash/v2 v2.3.0
-- **Dev tools**: shfmt, shellcheck, bats-core, golangci-lint, goimports
+## Agent Notes
+
+- Treat `burrow`, `README.md`, `Makefile`, `.github/workflows/`, and the hidden config files above as the primary truth sources for project behavior.
+- If `AGENTS.md` or older guidance disagree with the code, trust the code and update the docs.
+- The worktree may contain local ignored Claude metadata under `.claude/`; do not assume that content ships with the project.
