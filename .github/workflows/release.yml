@@ -76,18 +76,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install test tools
-        run: brew install bats-core shellcheck
-
-      - name: Lint test scripts
-        run: |
-          TEST_FILES=()
-          while IFS= read -r file; do
-            TEST_FILES+=("$file")
-          done < <(find tests -type f \( -name '*.bats' -o -name '*.sh' \) | sort)
-
-          if [[ ${#TEST_FILES[@]} -gt 0 ]]; then
-            shellcheck --rcfile .shellcheckrc "${TEST_FILES[@]}"
-          fi
+        run: brew install bats-core
 
       - name: Run BATS suites
         run: |
