@@ -138,3 +138,22 @@ assert isinstance(data['cleanup_potential_bytes'], int), \
     f'Expected int, got {type(data[\"cleanup_potential_bytes\"])}'
 " <<< "$output"
 }
+
+@test "bw report caches cleanup potential for repeated runs" {
+    local cache_file="$HOME/.cache/burrow/report_cleanup_potential_v1"
+
+    run env HOME="$HOME" BW_NO_OPLOG=1 BW_REPORT_CLEANUP_CACHE_TTL=3600 \
+        bash --noprofile --norc "$PROJECT_ROOT/bin/report.sh"
+
+    [ "$status" -eq 0 ]
+    [ -f "$cache_file" ]
+
+    python3 -c "
+from pathlib import Path
+raw = Path('$cache_file').read_text().strip()
+parts = raw.split('\t', 1)
+assert len(parts) == 2, f'Unexpected cache format: {raw!r}'
+assert parts[0].isdigit(), f'Expected numeric byte count, got {parts[0]!r}'
+assert parts[1], 'Expected non-empty human-readable cleanup value'
+"
+}

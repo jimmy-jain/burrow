@@ -52,11 +52,97 @@ _get_report_free_space() {
     fi
 }
 
+_get_report_cache_dir() {
+    printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/burrow"
+}
+
+_get_cleanup_potential_cache_file() {
+    local cache_dir
+    cache_dir=$(_get_report_cache_dir)
+    printf '%s\n' "$cache_dir/report_cleanup_potential_v1"
+}
+
+_get_cleanup_potential_cache_ttl() {
+    local ttl="${BW_REPORT_CLEANUP_CACHE_TTL:-300}"
+    if [[ ! "$ttl" =~ ^[0-9]+$ ]]; then
+        ttl=300
+    fi
+    printf '%s\n' "$ttl"
+}
+
+_read_cached_cleanup_potential() {
+    if [[ "${BW_REPORT_DISABLE_CACHE:-0}" == "1" ]]; then
+        return 1
+    fi
+
+    local ttl
+    ttl=$(_get_cleanup_potential_cache_ttl)
+    if [[ "$ttl" -eq 0 ]]; then
+        return 1
+    fi
+
+    local cache_file
+    cache_file=$(_get_cleanup_potential_cache_file)
+    if [[ ! -r "$cache_file" ]]; then
+        return 1
+    fi
+
+    local now mtime age
+    now=$(get_epoch_seconds)
+    mtime=$(get_file_mtime "$cache_file")
+    if [[ ! "$now" =~ ^[0-9]+$ ]] || [[ ! "$mtime" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    age=$((now - mtime))
+    if [[ "$age" -lt 0 ]] || [[ "$age" -gt "$ttl" ]]; then
+        return 1
+    fi
+
+    local cached_bytes="" cached_human=""
+    IFS=$'\t' read -r cached_bytes cached_human < "$cache_file" || true
+    if [[ ! "$cached_bytes" =~ ^[0-9]+$ ]] || [[ -z "$cached_human" ]]; then
+        return 1
+    fi
+
+    printf '%s %s' "$cached_bytes" "$cached_human"
+}
+
+_write_cached_cleanup_potential() {
+    if [[ "${BW_REPORT_DISABLE_CACHE:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    local bytes="$1"
+    local human="$2"
+    if [[ ! "$bytes" =~ ^[0-9]+$ ]] || [[ -z "$human" ]]; then
+        return 0
+    fi
+
+    local cache_dir cache_file tmp_file
+    cache_dir=$(_get_report_cache_dir)
+    cache_file=$(_get_cleanup_potential_cache_file)
+    tmp_file="${cache_file}.$$"
+
+    ensure_user_dir "$cache_dir"
+
+    if printf '%s\t%s\n' "$bytes" "$human" > "$tmp_file" 2> /dev/null; then
+        mv "$tmp_file" "$cache_file" 2> /dev/null || cp "$tmp_file" "$cache_file" 2> /dev/null || true
+        rm -f "$tmp_file" 2> /dev/null || true
+    fi
+}
+
 # Try to determine total reclaimable bytes from `bw clean --dry-run`.
 # Returns the byte count on stdout, or 0 if unavailable.
 _get_cleanup_potential() {
     local potential_bytes=0
     local potential_human="0B"
+    local cached=""
+
+    cached=$(_read_cached_cleanup_potential || true)
+    if [[ -n "$cached" ]]; then
+        printf '%s' "$cached"
+        return 0
+    fi
 
     # Look for a 'bw' or 'burrow' binary relative to SCRIPT_DIR or on PATH.
     local bw_bin=""
@@ -90,6 +176,7 @@ _get_cleanup_potential() {
         fi
     fi
 
+    _write_cached_cleanup_potential "$potential_bytes" "$potential_human"
     printf '%s %s' "$potential_bytes" "$potential_human"
 }
 
