@@ -278,6 +278,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [check, test]
     runs-on: macos-14
+    outputs:
+      release_created: ${{ steps.create_release.outputs.release_created }}
+      release_tag: ${{ steps.create_release.outputs.release_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -345,6 +348,7 @@ jobs:
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Bump version and tag
+        id: create_release
         if: steps.skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
@@ -359,10 +363,19 @@ jobs:
           git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
           git tag "V${NEW_VERSION}"
           git push origin HEAD:main "refs/tags/V${NEW_VERSION}"
+          echo "release_created=true" >> "$GITHUB_OUTPUT"
+          echo "release_tag=V${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
   build:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
-    needs: [check, test]
+    if: >
+      always() &&
+      needs.check.result == 'success' &&
+      needs.test.result == 'success' &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')) ||
+        needs.tag.outputs.release_created == 'true'
+      )
+    needs: [check, test, tag]
     strategy:
       matrix:
         include:
@@ -372,8 +385,26 @@ jobs:
             arch: amd64
     runs-on: ${{ matrix.runner }}
     steps:
+      - name: Determine release tag
+        id: release
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/V* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ needs.tag.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Checkout release ref
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git fetch --force --tags origin
+          git checkout --force "${RELEASE_TAG}"
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -391,14 +422,36 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
-    needs: [build]
+    if: >
+      always() &&
+      needs.build.result == 'success' &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')) ||
+        needs.tag.outputs.release_created == 'true'
+      )
+    needs: [build, tag]
     runs-on: ubuntu-latest
     steps:
+      - name: Determine release tag
+        id: release
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/V* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ needs.tag.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Checkout release ref
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git fetch --force --tags origin
+          git checkout --force "${RELEASE_TAG}"
 
       - name: Download arm64 binaries
         uses: actions/download-artifact@v4
@@ -414,7 +467,7 @@ jobs:
 
       - name: Generate release notes
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 --match "V*" "${TAG}^" 2> /dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
@@ -426,7 +479,7 @@ jobs:
       - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           chmod +x dist/arm64/* dist/amd64/* 2> /dev/null || true
           gh release create "${TAG}" \
