@@ -80,7 +80,7 @@ show_status() {
 
     if [[ -d "$LAUNCHER_DIR" ]]; then
         local count
-        count=$(ls "$LAUNCHER_DIR"/burrow-*.sh 2>/dev/null | wc -l | tr -d ' ')
+        count=$(find "$LAUNCHER_DIR" -maxdepth 1 -name 'burrow-*.sh' 2>/dev/null | wc -l | tr -d ' ')
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $count Raycast commands installed"
         echo -e "  ${GRAY}${ICON_SUBLIST} $LAUNCHER_DIR${NC}"
 
