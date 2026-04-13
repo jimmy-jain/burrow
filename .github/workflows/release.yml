@@ -1,100 +1,268 @@
 name: release
 
 on:
-  workflow_run:
-    workflows: [check, test]
-    types: [completed]
-    branches: [main]
+  pull_request:
+    branches: [main, dev]
   push:
+    branches: [main, dev]
     tags:
       - "V*"
 
 permissions:
   contents: write
 
-jobs:
-  auto-tag:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
-    runs-on: macos-14
-    steps:
-      - name: Verify both check and test passed for this SHA
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          check_ok=$(gh api "repos/${REPO}/actions/workflows/check.yml/runs" \
-            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
-            2> /dev/null || echo "")
-          test_ok=$(gh api "repos/${REPO}/actions/workflows/test.yml/runs" \
-            --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" and .status == \"completed\")] | first | .conclusion" \
-            2> /dev/null || echo "")
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
-          echo "check: $check_ok, test: $test_ok"
-          if [ "$check_ok" = "success" ] && [ "$test_ok" = "success" ]; then
-            echo "gate=pass" >> "$GITHUB_OUTPUT"
-          else
-            echo "gate=fail" >> "$GITHUB_OUTPUT"
-            echo "Both check and test must succeed for the same SHA before tagging."
+jobs:
+  check-shell:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install shell tools
+        run: brew install shellcheck
+
+      - name: Run shell and syntax checks
+        env:
+          CI: "true"
+        run: ./scripts/check.sh --no-format
+
+  check-go-lint:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.4
+          args: --config .golangci.yml ./...
+
+  check:
+    if: ${{ always() }}
+    needs: [check-shell, check-go-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify check jobs
+        run: |
+          echo "check-shell: ${{ needs.check-shell.result }}"
+          echo "check-go-lint: ${{ needs.check-go-lint.result }}"
+          [ "${{ needs.check-shell.result }}" = "success" ]
+          [ "${{ needs.check-go-lint.result }}" = "success" ]
+
+  test-bats:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    env:
+      BURROW_TEST_NO_AUTH: "1"
+      TERM: xterm-256color
+      BATS_FORMATTER: tap
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install test tools
+        run: brew install bats-core shellcheck
+
+      - name: Lint test scripts
+        run: |
+          TEST_FILES=()
+          while IFS= read -r file; do
+            TEST_FILES+=("$file")
+          done < <(find tests -type f \( -name '*.bats' -o -name '*.sh' \) | sort)
+
+          if [[ ${#TEST_FILES[@]} -gt 0 ]]; then
+            shellcheck --rcfile .shellcheckrc "${TEST_FILES[@]}"
           fi
 
-      - name: Checkout tested SHA
-        if: steps.gate.outputs.gate == 'pass'
+      - name: Run BATS suites
+        run: |
+          fd_available=0
+          zip_available=0
+          zip_list_available=0
+          command -v fd > /dev/null 2>&1 && fd_available=1
+          command -v zip > /dev/null 2>&1 && zip_available=1
+          if command -v zipinfo > /dev/null 2>&1 || command -v unzip > /dev/null 2>&1; then
+            zip_list_available=1
+          fi
+
+          TEST_FILES=()
+          while IFS= read -r file; do
+            case "$file" in
+              tests/installer_fd.bats)
+                [[ $fd_available -eq 1 ]] && TEST_FILES+=("$file")
+                ;;
+              tests/installer_zip.bats)
+                [[ $zip_available -eq 1 && $zip_list_available -eq 1 ]] && TEST_FILES+=("$file")
+                ;;
+              *)
+                TEST_FILES+=("$file")
+                ;;
+            esac
+          done < <(find tests -type f -name '*.bats' | sort)
+
+          bats_opts=()
+          if command -v parallel > /dev/null 2>&1 && bats --help 2>&1 | grep -q -- "--jobs"; then
+            _ncpu="$(sysctl -n hw.logicalcpu 2> /dev/null || echo 4)"
+            _jobs="$((_ncpu > 6 ? 6 : (_ncpu < 2 ? 2 : _ncpu)))"
+            bats_opts+=("--jobs" "$_jobs" "--no-parallelize-within-files")
+          fi
+
+          perf_file="tests/core_performance.bats"
+          MAIN_TEST_FILES=()
+          for file in "${TEST_FILES[@]}"; do
+            if [[ "$file" != "$perf_file" ]]; then
+              MAIN_TEST_FILES+=("$file")
+            fi
+          done
+
+          if [[ ${#MAIN_TEST_FILES[@]} -gt 0 ]]; then
+            bats "${bats_opts[@]}" --formatter tap "${MAIN_TEST_FILES[@]}"
+          fi
+
+          if [[ -f "$perf_file" ]]; then
+            bats "$perf_file"
+          fi
+
+  test-go:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run Go build, vet, and tests
+        env:
+          BURROW_GO_TEST_CACHE: /tmp/burrow-go-build-cache
+        run: |
+          mkdir -p "$BURROW_GO_TEST_CACHE"
+          GOCACHE="$BURROW_GO_TEST_CACHE" go build ./...
+          GOCACHE="$BURROW_GO_TEST_CACHE" go vet ./cmd/...
+          GOCACHE="$BURROW_GO_TEST_CACHE" go test ./cmd/...
+
+  test-smoke:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    env:
+      BURROW_TEST_NO_AUTH: "1"
+      TERM: xterm-256color
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install shell smoke prerequisites
+        run: brew install shellcheck
+
+      - name: Test module loading
+        run: bash -c 'source lib/core/common.sh && echo "OK"' > /dev/null
+
+      - name: Run integration syntax checks
+        run: |
+          bash -n burrow
+          bash -n bin/clean.sh
+          bash -n bin/optimize.sh
+
+      - name: Run installation smoke test
+        env:
+          BW_NO_OPLOG: "1"
+        run: |
+          install_test_home="$(mktemp -d /tmp/burrow-test-home.XXXXXX 2> /dev/null || true)"
+          if [[ -z "$install_test_home" ]]; then
+            install_test_home="/tmp/burrow-test-home"
+            mkdir -p "$install_test_home"
+          fi
+
+          cleanup() {
+            rm -rf /tmp/burrow-test "$install_test_home" 2> /dev/null || true
+          }
+          trap cleanup EXIT
+
+          HOME="$install_test_home" \
+          XDG_CONFIG_HOME="$install_test_home/.config" \
+          XDG_CACHE_HOME="$install_test_home/.cache" \
+          ./install.sh --prefix /tmp/burrow-test > /dev/null 2>&1
+
+          test -f /tmp/burrow-test/burrow
+
+  test:
+    if: ${{ always() }}
+    needs: [test-bats, test-go, test-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify test jobs
+        run: |
+          echo "test-bats: ${{ needs.test-bats.result }}"
+          echo "test-go: ${{ needs.test-go.result }}"
+          echo "test-smoke: ${{ needs.test-smoke.result }}"
+          [ "${{ needs.test-bats.result }}" = "success" ]
+          [ "${{ needs.test-go.result }}" = "success" ]
+          [ "${{ needs.test-smoke.result }}" = "success" ]
+
+  tag:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, test]
+    runs-on: macos-14
+    steps:
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           token: ${{ github.token }}
 
-      - name: Ensure SHA is still current main HEAD
-        id: head_guard
-        if: steps.gate.outputs.gate == 'pass'
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          remote_main=$(git ls-remote origin refs/heads/main | awk '{print $1}')
-          echo "remote_main=$remote_main"
-          if [ "$remote_main" = "$SHA" ]; then
-            echo "head_ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "head_ok=false" >> "$GITHUB_OUTPUT"
-            echo "main advanced to $remote_main after this run started — skipping stale tag flow"
-          fi
-
-      - name: Skip if bump commit
-        id: check_skip
-        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true'
+      - name: Skip bump commits
+        id: skip
         run: |
           COMMIT_MSG=$(git log -1 --format="%s")
           if echo "$COMMIT_MSG" | grep -q '\[skip ci\]'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping: commit contains [skip ci]"
           elif echo "$COMMIT_MSG" | grep -q '^chore: bump version to'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Skipping: commit is a version bump"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine version bump
         id: version
-        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true' && steps.check_skip.outputs.skip == 'false'
+        if: steps.skip.outputs.skip == 'false'
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 --match "V*" 2>/dev/null || echo "V0.0.0")
-          echo "Last tag: $LAST_TAG"
-
           LAST_TAG_COMMIT=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || echo "")
           HEAD_COMMIT=$(git rev-parse HEAD)
+
           if [ "$LAST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
-            echo "HEAD is already tagged as $LAST_TAG — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           COMMITS=$(git log "${LAST_TAG}..HEAD" --format="%s %b" 2>/dev/null || echo "")
           if [ -z "$COMMITS" ]; then
-            echo "No new commits since $LAST_TAG — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -111,8 +279,6 @@ jobs:
             fi
           done <<< "$COMMITS"
 
-          echo "Bump type: $BUMP"
-
           CURRENT="${LAST_TAG#V}"
           MAJOR=$(echo "$CURRENT" | cut -d. -f1)
           MINOR=$(echo "$CURRENT" | cut -d. -f2)
@@ -126,11 +292,10 @@ jobs:
           fi
 
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Bump version and tag
-        if: steps.gate.outputs.gate == 'pass' && steps.head_guard.outputs.head_ok == 'true' && steps.check_skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
+        if: steps.skip.outputs.skip == 'false' && steps.version.outputs.skip != 'true'
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
@@ -145,27 +310,9 @@ jobs:
           git tag "V${NEW_VERSION}"
           git push origin HEAD:main "refs/tags/V${NEW_VERSION}"
 
-  test:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
-    runs-on: macos-14
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Install bats-core
-        run: brew install bats-core
-
-      - name: Run tests
-        run: ./scripts/test.sh
-
   build:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
-    needs: test
+    needs: [check, test]
     strategy:
       matrix:
         include:
@@ -195,7 +342,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/V')
-    needs: [test, build]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -219,7 +366,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 --match "V*" "${TAG}^" 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "V*" "${TAG}^" 2> /dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" --no-merges > release_notes.txt
           else
@@ -231,7 +378,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          chmod +x dist/arm64/* dist/amd64/* 2>/dev/null || true
+          chmod +x dist/arm64/* dist/amd64/* 2> /dev/null || true
           gh release create "${TAG}" \
             --title "Burrow ${TAG}" \
             --notes-file release_notes.txt \
