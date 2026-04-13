@@ -13,6 +13,11 @@ cd "$PROJECT_ROOT"
 # Never allow the scripted test run to trigger real sudo or Touch ID prompts.
 export BURROW_TEST_NO_AUTH=1
 
+# Ensure $TERM is set before sourcing any lib that calls tput.
+if [[ -z "${TERM:-}" ]]; then
+    export TERM="xterm-256color"
+fi
+
 # shellcheck source=lib/core/file_ops.sh
 source "$PROJECT_ROOT/lib/core/file_ops.sh"
 
@@ -55,9 +60,6 @@ echo ""
 
 echo "2. Running unit tests..."
 if command -v bats > /dev/null 2>&1 && [ -d "tests" ]; then
-    if [[ -z "${TERM:-}" ]]; then
-        export TERM="xterm-256color"
-    fi
     if [[ $# -eq 0 ]]; then
         fd_available=0
         zip_available=0
@@ -100,6 +102,12 @@ if command -v bats > /dev/null 2>&1 && [ -d "tests" ]; then
     use_color=false
     if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
         use_color=true
+    fi
+
+    # In CI, force TAP formatter — the 'pretty' formatter uses tput which
+    # requires a real terminal and causes broken-pipe cascades with parallel workers.
+    if [[ "${CI:-}" == "true" && -z "${BATS_FORMATTER:-}" ]]; then
+        export BATS_FORMATTER="tap"
     fi
 
     # Enable parallel execution across test files when GNU parallel is available.
