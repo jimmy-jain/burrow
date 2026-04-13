@@ -17,7 +17,12 @@ var (
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#87AF87"))
 	lineStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3A"))
 
-	primaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#AF87AF"))
+	primaryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#AF87AF"))
+	alertBarStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#2B1200")).
+			Background(lipgloss.Color("#FFD75F")).
+			Bold(true).
+			Padding(0, 1)
 )
 
 const (
@@ -128,6 +133,35 @@ func getScoreStyle(score int) lipgloss.Style {
 	default:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Bold(true)
 	}
+}
+
+func renderProcessAlertBar(alerts []ProcessAlert, width int) string {
+	active := activeAlerts(alerts)
+	if len(active) == 0 {
+		return ""
+	}
+
+	focus := active[0]
+
+	text := fmt.Sprintf(
+		"ALERT %s at %.1f%% for %s (threshold %.1f%%)",
+		formatProcessLabel(ProcessInfo{PID: focus.PID, Name: focus.Name}),
+		focus.CPU,
+		focus.Window,
+		focus.Threshold,
+	)
+	if len(active) > 1 {
+		text += fmt.Sprintf(" · +%d more", len(active)-1)
+	}
+
+	return renderBanner(alertBarStyle, text, width)
+}
+
+func renderBanner(style lipgloss.Style, text string, width int) string {
+	if width > 0 {
+		style = style.MaxWidth(width)
+	}
+	return style.Render(text)
 }
 
 func renderCPUCard(cpu CPUStatus, thermal ThermalStatus) cardData {
@@ -273,6 +307,17 @@ func renderDiskCard(disks []DiskStatus, io DiskIOStatus) cardData {
 				smartStyle = subtleStyle
 			}
 			lines = append(lines, "SMART  "+smartStyle.Render(disks[0].SMARTStatus))
+		}
+	}
+	// Show trash size for the primary internal disk.
+	for _, d := range disks {
+		if !d.External && d.TrashBytes > 0 {
+			trashStr := humanBytesShort(d.TrashBytes)
+			if d.TrashApprox {
+				trashStr = "~" + trashStr
+			}
+			lines = append(lines, fmt.Sprintf("%-6s %s", "Trash", trashStr))
+			break
 		}
 	}
 	readBar := ioBar(io.ReadRate)
@@ -751,3 +796,4 @@ func renderTwoColumns(cards []cardData, width int) string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, spacedRows...)
 }
+

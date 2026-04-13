@@ -225,6 +225,7 @@ read_key() {
         'm' | 'M') echo "MORE" ;;
         'u' | 'U') echo "UPDATE" ;;
         't' | 'T') echo "TOUCHID" ;;
+        'v' | 'V') echo "VERSION" ;;
         'j' | 'J') echo "DOWN" ;;
         'k' | 'K') echo "UP" ;;
         'h' | 'H') echo "LEFT" ;;

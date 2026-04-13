@@ -203,7 +203,7 @@ func collectThermal() ThermalStatus {
 			if _, after, found := strings.Cut(line, "\"Temperature\" = "); found {
 				valStr := strings.TrimSpace(after)
 				if tempRaw, err := strconv.Atoi(valStr); err == nil && tempRaw > 0 {
-					thermal.CPUTemp = float64(tempRaw) / 100.0
+					thermal.BatteryTemp = float64(tempRaw) / 100.0
 				}
 			}
 
@@ -285,7 +285,7 @@ func collectThermal() ThermalStatus {
 		}
 	}
 
-	// Fallback: thermal level proxy.
+	// Fallback: thermal level proxy for CPU temperature.
 	if thermal.CPUTemp == 0 {
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel2()

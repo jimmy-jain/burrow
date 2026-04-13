@@ -975,6 +975,10 @@ find_app_files() {
         "$HOME/.local/share/$app_name"
         "$HOME/.$app_name"
         "$HOME/.$app_name"rc
+        "$HOME/Library/SyncedPreferences/$bundle_id.plist"
+        "$HOME/Library/Address Book Plug-Ins/$app_name.bundle"
+        "$HOME/Library/Accessibility/$app_name.bundle"
+        "$HOME/Library/Mail/Bundles/$app_name.mailbundle"
     )
 
     # Add all naming variants to cover inconsistent app directory naming
@@ -1049,6 +1053,10 @@ find_app_files() {
         [[ -d ~/Library/Preferences/ByHost ]] && while IFS= read -r -d '' pref; do
             files_to_clean+=("$pref")
         done < <(command find ~/Library/Preferences/ByHost -maxdepth 1 \( -name "$bundle_id*.plist" \) -print0 2> /dev/null)
+
+        # NSURLSession download caches
+        local nsurlsession_dl="$HOME/Library/Caches/com.apple.nsurlsessiond/Downloads/$bundle_id"
+        [[ -d "$nsurlsession_dl" ]] && files_to_clean+=("$nsurlsession_dl")
 
         # Group Containers (special handling)
         if [[ -d ~/Library/Group\ Containers ]]; then
@@ -1267,6 +1275,10 @@ find_app_system_files() {
         "/Library/Screen Savers/$app_name.saver"
         "/Library/Caches/$bundle_id"
         "/Library/Caches/$app_name"
+        "/Library/Extensions/$app_name.kext"
+        "/Library/StartupItems/$app_name"
+        "/Library/Logs/$app_name"
+        "/Library/Logs/$bundle_id"
     )
 
     # Add all naming variants for apps with spaces in name

@@ -202,25 +202,61 @@ check_disk_smart() {
         return
     fi
 
-    local smart_output=""
-    smart_output=$(diskutil info disk0 2> /dev/null | grep "SMART Status" || echo "")
+    local boot_disk
+    boot_disk=$(diskutil info / 2> /dev/null | awk -F: '/Part of Whole/ {gsub(/^[ \t]+/, "", $2); print $2}')
+    [[ -z "$boot_disk" ]] && return
+    local smart_status=""
+    smart_status=$(diskutil info "$boot_disk" 2> /dev/null | awk -F: '/SMART Status/ {gsub(/^[ \t]+/, "", $2); print $2}')
 
-    if [[ -z "$smart_output" ]]; then
+    if [[ -z "$smart_status" ]]; then
         record_check "Disk SMART" "warn" "SMART status not available" \
             "Your disk may not support SMART monitoring"
         return
     fi
 
-    if [[ "$smart_output" == *"Verified"* ]]; then
+    if [[ "$smart_status" == *"Verified"* ]]; then
         record_check "Disk SMART" "pass" "Disk health verified" ""
-    elif [[ "$smart_output" == *"Failing"* ]]; then
+    elif [[ "$smart_status" == *"Failing"* ]]; then
         record_check "Disk SMART" "fail" "Disk SMART status: Failing" \
             "Back up your data immediately and consider replacing the disk"
     else
-        local status_text=""
-        status_text=$(printf '%s' "$smart_output" | sed 's/.*SMART Status:[[:space:]]*//')
+        local status_text="$smart_status"
         record_check "Disk SMART" "warn" "Disk SMART status: ${status_text}" ""
     fi
+}
+
+# Check 8: Orphaned LaunchAgents
+check_orphan_launch_agents() {
+    if command -v is_whitelisted > /dev/null && is_whitelisted "check_orphan_launch_agents"; then return; fi
+
+    local -a search_dirs orphans=()
+    IFS=: read -r -a search_dirs <<< "${BW_LAUNCH_AGENT_DIRS:-$HOME/Library/LaunchAgents:/Library/LaunchAgents}"
+
+    local plist label program
+    for dir in "${search_dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r -d '' plist; do
+            label=$(basename "$plist" .plist)
+            [[ "$label" == com.apple.* ]] && continue
+            program=$(/usr/bin/plutil -extract Program raw -o - "$plist" 2> /dev/null \
+                || /usr/bin/plutil -extract ProgramArguments.0 raw -o - "$plist" 2> /dev/null)
+            [[ "$program" == /* && ! -e "$program" ]] && orphans+=("$label")
+        done < <(find "$dir" -maxdepth 1 -name "*.plist" -print0 2> /dev/null)
+    done
+
+    local count=${#orphans[@]}
+
+    if [[ $count -eq 0 ]]; then
+        record_check "Launch Agents" "pass" "No orphaned launch agents" ""
+        return
+    fi
+
+    local s=""; ((count > 1)) && s="s" || true
+    local preview="${orphans[0]}"
+    ((count > 1)) && preview="${preview}, ${orphans[1]}" || true
+    ((count > 2)) && preview="${preview}, ${orphans[2]}" || true
+    ((count > 3)) && preview="${preview} +$((count - 3))" || true
+    record_check "Launch Agents" "warn" "${count} orphaned launch agent${s}" "$preview"
 }
 
 # ============================================================================
@@ -384,6 +420,7 @@ main() {
     check_node_version
     check_brew_health
     check_disk_smart
+    check_orphan_launch_agents
 
     # Output results
     if [[ "$json_mode" == "true" ]]; then

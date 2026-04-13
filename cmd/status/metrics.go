@@ -69,18 +69,20 @@ type MetricsSnapshot struct {
 
 	LastBackup string `json:"last_backup,omitempty"`
 
-	CPU            CPUStatus         `json:"cpu"`
-	GPU            []GPUStatus       `json:"gpu"`
-	Memory         MemoryStatus      `json:"memory"`
-	Disks          []DiskStatus      `json:"disks"`
-	DiskIO         DiskIOStatus      `json:"disk_io"`
-	Network        []NetworkStatus   `json:"network"`
-	NetworkHistory NetworkHistory    `json:"network_history"`
-	Proxy          ProxyStatus       `json:"proxy"`
-	Batteries      []BatteryStatus   `json:"batteries"`
-	Thermal        ThermalStatus     `json:"thermal"`
-	Bluetooth      []BluetoothDevice `json:"bluetooth"`
-	TopProcesses   []ProcessInfo     `json:"top_processes"`
+	CPU            CPUStatus          `json:"cpu"`
+	GPU            []GPUStatus        `json:"gpu"`
+	Memory         MemoryStatus       `json:"memory"`
+	Disks          []DiskStatus       `json:"disks"`
+	DiskIO         DiskIOStatus       `json:"disk_io"`
+	Network        []NetworkStatus    `json:"network"`
+	NetworkHistory NetworkHistory     `json:"network_history"`
+	Proxy          ProxyStatus        `json:"proxy"`
+	Batteries      []BatteryStatus    `json:"batteries"`
+	Thermal        ThermalStatus      `json:"thermal"`
+	Bluetooth      []BluetoothDevice  `json:"bluetooth"`
+	TopProcesses   []ProcessInfo      `json:"top_processes"`
+	ProcessWatch   ProcessWatchConfig `json:"process_watch"`
+	ProcessAlerts  []ProcessAlert     `json:"process_alerts"`
 }
 
 type HardwareInfo struct {
@@ -98,10 +100,13 @@ type DiskIOStatus struct {
 }
 
 type ProcessInfo struct {
-	Name   string  `json:"name"`
-	CPU    float64 `json:"cpu"`
-	Memory float64 `json:"memory"`
-	RSS    int64   `json:"rss,omitempty"`
+	PID     int     `json:"pid"`
+	PPID    int     `json:"ppid"`
+	Name    string  `json:"name"`
+	Command string  `json:"command"`
+	CPU     float64 `json:"cpu"`
+	Memory  float64 `json:"memory"`
+	RSS     int64   `json:"rss,omitempty"`
 }
 
 type CPUStatus struct {
@@ -145,6 +150,8 @@ type DiskStatus struct {
 	Fstype      string  `json:"fstype"`
 	External    bool    `json:"external"`
 	SMARTStatus string  `json:"smart_status,omitempty"`
+	TrashBytes  uint64  `json:"trash_bytes,omitempty"`
+	TrashApprox bool    `json:"trash_approx,omitempty"`
 }
 
 type NetworkStatus struct {
@@ -181,6 +188,7 @@ type BatteryStatus struct {
 type ThermalStatus struct {
 	CPUTemp      float64 `json:"cpu_temp"`
 	GPUTemp      float64 `json:"gpu_temp"`
+	BatteryTemp  float64 `json:"battery_temp"`
 	FanSpeed     int     `json:"fan_speed"`
 	FanCount     int     `json:"fan_count"`
 	SystemPower  float64 `json:"system_power"`  // System power consumption in Watts
@@ -220,13 +228,19 @@ type Collector struct {
 	cachedGPU    []GPUStatus
 	prevDiskIO   disk.IOCountersStat
 	lastDiskAt   time.Time
+
+	watchMu        sync.Mutex
+	processWatch   ProcessWatchConfig
+	processWatcher *ProcessWatcher
 }
 
-func NewCollector() *Collector {
+func NewCollector(options ProcessWatchOptions) *Collector {
 	return &Collector{
-		prevNet:      make(map[string]net.IOCountersStat),
-		rxHistoryBuf: NewRingBuffer(NetworkHistorySize),
-		txHistoryBuf: NewRingBuffer(NetworkHistorySize),
+		prevNet:        make(map[string]net.IOCountersStat),
+		rxHistoryBuf:   NewRingBuffer(NetworkHistorySize),
+		txHistoryBuf:   NewRingBuffer(NetworkHistorySize),
+		processWatch:   options.SnapshotConfig(),
+		processWatcher: NewProcessWatcher(options),
 	}
 }
 
@@ -254,7 +268,7 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 		thermalStats ThermalStatus
 		gpuStats     []GPUStatus
 		btStats      []BluetoothDevice
-		topProcs     []ProcessInfo
+		allProcs     []ProcessInfo
 		lastBackup   string
 		connCount    int
 	)
@@ -307,7 +321,7 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 		}
 		return nil
 	})
-	collect(func() (err error) { topProcs = collectTopProcesses(); return nil })
+	collect(func() (err error) { allProcs, err = collectProcesses(); return })
 	collect(func() (err error) { lastBackup = collectBackup(); return nil })
 	collect(func() (err error) { connCount = collectConnectionCount(); return nil })
 
@@ -324,6 +338,14 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 	hwInfo := c.cachedHW
 
 	score, scoreMsg := calculateHealthScore(cpuStats, memStats, diskStats, diskIO, thermalStats, batteryStats)
+	topProcs := topProcesses(allProcs, 5)
+
+	var processAlerts []ProcessAlert
+	c.watchMu.Lock()
+	if c.processWatcher != nil {
+		processAlerts = c.processWatcher.Update(now, allProcs)
+	}
+	c.watchMu.Unlock()
 
 	// Attach connection count to the first network interface.
 	if connCount > 0 && len(netStats) > 0 {
@@ -350,11 +372,13 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 			RxHistory: c.rxHistoryBuf.Slice(),
 			TxHistory: c.txHistoryBuf.Slice(),
 		},
-		Proxy:        proxyStats,
-		Batteries:    batteryStats,
-		Thermal:      thermalStats,
-		Bluetooth:    btStats,
-		TopProcesses: topProcs,
+		Proxy:         proxyStats,
+		Batteries:     batteryStats,
+		Thermal:       thermalStats,
+		Bluetooth:     btStats,
+		TopProcesses:  topProcs,
+		ProcessWatch:  c.processWatch,
+		ProcessAlerts: processAlerts,
 	}, mergeErr
 }
 

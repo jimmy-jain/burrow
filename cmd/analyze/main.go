@@ -808,6 +808,19 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = fmt.Sprintf("Opening %s...", selected.Name)
 			}
 		}
+	case "p", "P":
+		// Preview selected item with default macOS app via `open`.
+		var previewPath string
+		if m.showLargeFiles && len(m.largeFiles) > 0 {
+			previewPath = m.largeFiles[m.largeSelected].Path
+		} else if !m.showLargeFiles && len(m.entries) > 0 {
+			previewPath = m.entries[m.selected].Path
+		}
+		if previewPath != "" {
+			go func(path string) {
+				_ = safeOpen(path, false)
+			}(previewPath)
+		}
 	case "f", "F":
 		// Reveal in Finder (multi-select aware).
 		const maxBatchReveal = 20
