@@ -64,19 +64,48 @@ jobs:
           [ "${{ needs.check-go-lint.result }}" = "success" ]
 
   test-bats:
+    name: test-bats (${{ matrix.shard_name }})
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard_name: shard-1
+            shard_mode: main
+            shard_index: "0"
+            shard_total: "4"
+          - shard_name: shard-2
+            shard_mode: main
+            shard_index: "1"
+            shard_total: "4"
+          - shard_name: shard-3
+            shard_mode: main
+            shard_index: "2"
+            shard_total: "4"
+          - shard_name: shard-4
+            shard_mode: main
+            shard_index: "3"
+            shard_total: "4"
+          - shard_name: perf
+            shard_mode: perf
+            shard_index: "0"
+            shard_total: "1"
     permissions:
       contents: read
     env:
       BURROW_TEST_NO_AUTH: "1"
       TERM: xterm-256color
       BATS_FORMATTER: tap
+      BATS_SHARD_NAME: ${{ matrix.shard_name }}
+      BATS_SHARD_MODE: ${{ matrix.shard_mode }}
+      BATS_SHARD_INDEX: ${{ matrix.shard_index }}
+      BATS_SHARD_TOTAL: ${{ matrix.shard_total }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Install test tools
-        run: brew install bats-core
+        run: brew install bats-core parallel
 
       - name: Run BATS suites
         run: |
@@ -88,21 +117,9 @@ jobs:
           if command -v zipinfo > /dev/null 2>&1 || command -v unzip > /dev/null 2>&1; then
             zip_list_available=1
           fi
-
-          TEST_FILES=()
-          while IFS= read -r file; do
-            case "$file" in
-              tests/installer_fd.bats)
-                [[ $fd_available -eq 1 ]] && TEST_FILES+=("$file")
-                ;;
-              tests/installer_zip.bats)
-                [[ $zip_available -eq 1 && $zip_list_available -eq 1 ]] && TEST_FILES+=("$file")
-                ;;
-              *)
-                TEST_FILES+=("$file")
-                ;;
-            esac
-          done < <(find tests -type f -name '*.bats' | sort)
+          export FD_AVAILABLE="$fd_available"
+          export ZIP_AVAILABLE="$zip_available"
+          export ZIP_LIST_AVAILABLE="$zip_list_available"
 
           bats_opts=()
           if command -v parallel > /dev/null 2>&1 && bats --help 2>&1 | grep -q -- "--jobs"; then
@@ -112,20 +129,64 @@ jobs:
           fi
 
           perf_file="tests/core_performance.bats"
-          MAIN_TEST_FILES=()
-          for file in "${TEST_FILES[@]}"; do
-            if [[ "$file" != "$perf_file" ]]; then
-              MAIN_TEST_FILES+=("$file")
-            fi
-          done
+          SHARD_FILES=()
+          while IFS= read -r file; do
+            [[ -n "$file" ]] && SHARD_FILES+=("$file")
+          done < <(
+            python3 - <<'PY'
+            import os
+            import pathlib
+            import re
 
-          if [[ ${#MAIN_TEST_FILES[@]} -gt 0 ]]; then
-            bats "${bats_opts[@]}" --formatter tap "${MAIN_TEST_FILES[@]}"
+            fd_available = os.environ.get("FD_AVAILABLE", "0") == "1"
+            zip_available = os.environ.get("ZIP_AVAILABLE", "0") == "1"
+            zip_list_available = os.environ.get("ZIP_LIST_AVAILABLE", "0") == "1"
+            shard_mode = os.environ.get("BATS_SHARD_MODE", "main")
+            shard_index = int(os.environ.get("BATS_SHARD_INDEX", "0"))
+            shard_total = int(os.environ.get("BATS_SHARD_TOTAL", "1"))
+
+            root = pathlib.Path("tests")
+            perf_file = root / "core_performance.bats"
+
+            if shard_mode == "perf":
+                if perf_file.exists():
+                    print(str(perf_file))
+                raise SystemExit(0)
+
+            files = []
+            for path in sorted(root.rglob("*.bats")):
+                rel = path.as_posix()
+                if rel == perf_file.as_posix():
+                    continue
+                if rel == "tests/installer_fd.bats" and not fd_available:
+                    continue
+                if rel == "tests/installer_zip.bats" and not (zip_available and zip_list_available):
+                    continue
+                text = path.read_text(errors="ignore")
+                count = len(re.findall(r"^@test\b", text, re.M))
+                files.append((count, rel))
+
+            bucket_counts = [0] * shard_total
+            bucket_files = [[] for _ in range(shard_total)]
+
+            for count, rel in sorted(files, key=lambda item: (-item[0], item[1])):
+                target = min(range(shard_total), key=lambda idx: (bucket_counts[idx], idx))
+                bucket_files[target].append(rel)
+                bucket_counts[target] += count
+
+            for rel in bucket_files[shard_index]:
+                print(rel)
+            PY
+          )
+
+          if [[ ${#SHARD_FILES[@]} -eq 0 ]]; then
+            echo "No BATS files assigned to shard ${BATS_SHARD_NAME}"
+            exit 0
           fi
 
-          if [[ -f "$perf_file" ]]; then
-            bats "$perf_file"
-          fi
+          printf 'Running BATS shard %s with %s file(s)\n' "$BATS_SHARD_NAME" "${#SHARD_FILES[@]}"
+          printf ' - %s\n' "${SHARD_FILES[@]}"
+          bats "${bats_opts[@]}" --formatter tap "${SHARD_FILES[@]}"
 
   test-go:
     runs-on: macos-14
