@@ -814,7 +814,9 @@ opt_quarantine_cleanup() {
     fi
 
     local sql_ok=0
-    sqlite3 "$qtn_db" "DELETE FROM LSQuarantineEvent; VACUUM;" 2> /dev/null || sql_ok=$?
+    sqlite3 "$qtn_db" \
+        "DELETE FROM LSQuarantineEvent WHERE LSQuarantineTimeStamp < (strftime('%s','now','-30 days') - strftime('%s','2001-01-01')); VACUUM;" \
+        2> /dev/null || sql_ok=$?
     if [[ $sql_ok -eq 0 ]]; then
         opt_msg "Quarantine database cleaned (was $(bytes_to_human "$db_size"))"
     else
@@ -842,9 +844,14 @@ opt_launch_agents_cleanup() {
         [[ "$plist" == *"dev.burrow"* ]] && continue
         # Check if the plist references an executable that no longer exists
         local exec_path
-        exec_path=$(defaults read "$plist" ProgramArguments 2> /dev/null | awk 'NR==2{gsub(/[[:space:]]*"/, ""); gsub(/,/, ""); print; exit}' || true)
+        exec_path=$(/usr/bin/plutil -extract Program raw -o - "$plist" 2> /dev/null \
+            || /usr/bin/plutil -extract ProgramArguments.0 raw -o - "$plist" 2> /dev/null \
+            || true)
         if [[ -n "$exec_path" && "$exec_path" == /* && ! -e "$exec_path" ]]; then
-            launchctl unload "$plist" 2> /dev/null || true
+            local label
+            label=$(basename "$plist" .plist)
+            launchctl bootout "gui/$(id -u)/$label" 2> /dev/null \
+                || launchctl unload "$plist" 2> /dev/null || true
             safe_remove "$plist" true > /dev/null 2>&1 && removed=$((removed + 1))
         fi
     done < <(command find "$agents_dir" -name "*.plist" -maxdepth 1 -type f 2> /dev/null || true)
@@ -885,7 +892,7 @@ opt_notification_cleanup() {
         2> /dev/null || sql_ok=$?
     if [[ $sql_ok -eq 0 ]]; then
         killall NotificationCenter 2> /dev/null || true
-        opt_msg "Notification Center database cleaned (was $(bytes_to_human "$((db_size * 1024))"))"
+        opt_msg "Notification Center database cleaned (was $(bytes_to_human "$db_size"))"
     else
         echo -e "  ${YELLOW}${ICON_WARNING}${NC} Notification Center cleanup skipped (database busy or locked)"
     fi
@@ -917,7 +924,7 @@ opt_coreduet_cleanup() {
         "DELETE FROM ZOBJECT WHERE ZCREATIONDATE < (strftime('%s','now','-90 days') - strftime('%s','2001-01-01')); VACUUM;" \
         2> /dev/null || sql_ok=$?
     if [[ $sql_ok -eq 0 ]]; then
-        opt_msg "Knowledge database cleaned (was $(bytes_to_human "$((total_size * 1024))"))"
+        opt_msg "Knowledge database cleaned (was $(bytes_to_human "$total_size"))"
     else
         echo -e "  ${YELLOW}${ICON_WARNING}${NC} Knowledge database cleanup skipped (database busy or locked)"
     fi

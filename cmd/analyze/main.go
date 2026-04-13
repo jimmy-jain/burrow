@@ -818,8 +818,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if previewPath != "" {
 			go func(path string) {
-				cmd := exec.Command("open", path)
-				_ = cmd.Run()
+				_ = safeOpen(path, false)
 			}(previewPath)
 		}
 	case "f", "F":

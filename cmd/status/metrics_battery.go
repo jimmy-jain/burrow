@@ -285,5 +285,18 @@ func collectThermal() ThermalStatus {
 		}
 	}
 
+	// Fallback: thermal level proxy for CPU temperature.
+	if thermal.CPUTemp == 0 {
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel2()
+		out2, err := runCmd(ctx2, "sysctl", "-n", "machdep.xcpm.cpu_thermal_level")
+		if err == nil {
+			level, _ := strconv.Atoi(strings.TrimSpace(out2))
+			if level >= 0 {
+				thermal.CPUTemp = 45 + float64(level)*0.5
+			}
+		}
+	}
+
 	return thermal
 }
