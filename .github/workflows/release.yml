@@ -415,7 +415,7 @@ jobs:
         run: make release-${{ matrix.arch }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.arch }}
           path: bin/*-darwin-${{ matrix.arch }}
